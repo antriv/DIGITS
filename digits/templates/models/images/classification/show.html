@@ -166,6 +166,17 @@ updateSnapshotList({% autoescape false %}{{task.snapshot_list()}}{% endautoescap
                                 title="For each layer in the network, show statistics for the weights/activations and attempt to represent the data visually. Can delay classification considerably."
                                 ></span>
                         </div>
+                        <div class="form-group">
+                            <label for="dont_resize">
+                                <input id="dont_resize" name="dont_resize" type="checkbox" value="y">
+                                Do not resize
+                            </label>
+                            <span name="dont_resize_explanation"
+                                class="explanation-tooltip glyphicon glyphicon-question-sign"
+                                data-container="body"
+                                title="RTFMN"
+                                ></span>
+                        </div>
                         <button name="classify-one-btn"
                             formaction="{{url_for('digits.model.images.classification.views.classify_one', job_id=job.id())}}"
                             formmethod="post"

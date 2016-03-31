@@ -466,16 +466,18 @@ class TorchTrainTask(TrainTask):
         return None
 
     @override
-    def infer_one(self, data, snapshot_epoch=None, layers=None, gpu=None):
+    def infer_one(self, data, snapshot_epoch=None, layers=None, resize_override=None, gpu=None):
+        print('infer_one(..,resize_override='+resize_override+')')
         if isinstance(self.dataset, ImageClassificationDatasetJob) or isinstance(self.dataset, dataset.GenericImageDatasetJob):
             return self.infer_one_image(data,
                     snapshot_epoch=snapshot_epoch,
                     layers=layers,
+                    resize_override=resize_override,
                     gpu=gpu,
                     )
         raise NotImplementedError('torch infer one')
 
-    def infer_one_image(self, image, snapshot_epoch=None, layers=None, gpu=None):
+    def infer_one_image(self, image, snapshot_epoch=None, layers=None, resize_override=None, gpu=None):
         """
         Classify an image
         Returns (predictions, visualizations)
@@ -525,6 +527,9 @@ class TorchTrainTask(TrainTask):
 
         if snapshot_epoch:
             args.append('--epoch=%d' % int(snapshot_epoch))
+
+        if resize_override:
+            args.append('--resize_override=yes')
 
         if self.use_mean == 'pixel':
             args.append('--subtractMean=pixel')

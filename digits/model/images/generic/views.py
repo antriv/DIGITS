@@ -257,6 +257,12 @@ def infer_one():
     if 'show_visualizations' in flask.request.form and flask.request.form['show_visualizations']:
         layers = 'all'
 
+    resize_override = ''
+    if 'dont_resize' in flask.request.form and flask.request.form['dont_resize']:
+        resize_override = 'none'
+
+
+
     # create inference job
     inference_job = ImageInferenceJob(
                 username    = utils.auth.get_username(),
@@ -264,7 +270,8 @@ def infer_one():
                 model       = model_job,
                 images      = [image_path],
                 epoch       = epoch,
-                layers      = layers
+                layers      = layers, 
+                resize_override = resize_override
                 )
 
     # schedule tasks
@@ -358,7 +365,8 @@ def infer_many():
                 model       = model_job,
                 images      = paths,
                 epoch       = epoch,
-                layers      = 'none'
+                layers      = 'none',
+                resize_override = ''
                 )
 
     # schedule tasks

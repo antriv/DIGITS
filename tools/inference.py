@@ -30,7 +30,9 @@ logger = logging.getLogger('digits.tools.inference')
 """
 Perform inference on a list of images using the specified model
 """
-def infer(input_list, output_dir, jobs_dir, model_id, epoch, batch_size, layers, gpu):
+def infer(input_list, output_dir, jobs_dir, model_id, epoch, batch_size, layers, resize_override, gpu):
+    print('infer(.., resize_override='+resize_override+', gpu='+str(gpu)+')')
+
 
     # job directory defaults to that defined in DIGITS config
     if jobs_dir == 'none':
@@ -79,6 +81,10 @@ def infer(input_list, output_dir, jobs_dir, model_id, epoch, batch_size, layers,
     else:
         raise InferenceError("Unknown dataset type")
 
+    # Check if we want to override the resize mode
+    if not resize_override == '':
+        resize_mode = resize_override
+
     n_input_samples = 0  # number of samples we were able to load
     input_ids = []       # indices of samples within file list
     input_data = []      # sample data
@@ -95,7 +101,7 @@ def infer(input_list, output_dir, jobs_dir, model_id, epoch, batch_size, layers,
             image = utils.image.resize_image(image,
                         height, width,
                         channels    = channels,
-                        resize_mode = resize_mode,
+                        resize_mode = resize_mode, #resize_override? @TODO
                         )
             input_ids.append(idx)
             input_data.append(image)
@@ -111,7 +117,7 @@ def infer(input_list, output_dir, jobs_dir, model_id, epoch, batch_size, layers,
         raise InferenceError("Unable to load any image from file '%s'" % repr(input_list))
     elif n_input_samples == 1:
         # single image inference
-        outputs, visualizations = model.train_task().infer_one(input_data[0], snapshot_epoch=epoch, layers=layers, gpu=gpu)
+        outputs, visualizations = model.train_task().infer_one(input_data[0], snapshot_epoch=epoch, layers=layers, resize_override=resize_override, gpu=gpu)
     else:
         assert layers == 'none'
         outputs = model.train_task().infer_many(input_data, snapshot_epoch=epoch, gpu=gpu)
@@ -184,6 +190,11 @@ if __name__ == '__main__':
             help='Which layers to write to output ("none" [default] or "all")',
             )
 
+    parser.add_argument('-r', '--resize_override',
+        default='',
+        help='The mode of resizing other than the datasets default. (for example "none" or keep blank "")',
+        )
+
     parser.add_argument('-b', '--batch_size',
             type=int,
             default=1,
@@ -207,6 +218,7 @@ if __name__ == '__main__':
             args['epoch'],
             args['batch_size'],
             args['layers'],
+            args['resize_override'],
             args['gpu'],
                 )
     except Exception as e:

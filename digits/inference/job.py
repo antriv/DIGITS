@@ -12,7 +12,7 @@ class InferenceJob(Job):
     A Job that exercises the forward pass of a neural network
     """
 
-    def __init__(self, model, images, epoch, layers, **kwargs):
+    def __init__(self, model, images, epoch, layers, resize_override, **kwargs):
         """
         Arguments:
         model   -- job object associated with model to perform inference on
@@ -32,7 +32,8 @@ class InferenceJob(Job):
             model     = model,
             images    = images,
             epoch     = epoch,
-            layers    = layers))
+            layers    = layers,
+            resize_override = resize_override))
 
     @override
     def __getstate__(self):

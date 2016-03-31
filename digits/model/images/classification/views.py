@@ -306,6 +306,12 @@ def classify_one():
     if 'show_visualizations' in flask.request.form and flask.request.form['show_visualizations']:
         layers = 'all'
 
+    resize_override = ''
+    if 'dont_resize' in flask.request.form and flask.request.form['dont_resize']:
+        resize_override = 'none'
+
+    # print('classify_one() : resize_override='+resize_override)
+
     # create inference job
     inference_job = ImageInferenceJob(
                 username    = utils.auth.get_username(),
@@ -313,7 +319,8 @@ def classify_one():
                 model       = model_job,
                 images      = [image_path],
                 epoch       = epoch,
-                layers      = layers
+                layers      = layers, #aka show_visualizations
+                resize_override = resize_override
                 )
 
     # schedule tasks
@@ -401,7 +408,8 @@ def classify_many():
                 model       = model_job,
                 images      = paths,
                 epoch       = epoch,
-                layers      = 'none'
+                layers      = 'none',
+                resize_override = ''
                 )
 
     # schedule tasks
@@ -548,7 +556,8 @@ def top_n():
                 model       = model_job,
                 images      = paths,
                 epoch       = epoch,
-                layers      = 'none'
+                layers      = 'none',
+                resize_override = ''
                 )
 
     # schedule tasks

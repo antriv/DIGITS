@@ -2,12 +2,12 @@
 
 <!doctype html>
 <head>
-    <link rel="icon" href="{{url_for('static', filename='images/nvidia.ico')}}" />
+    <link rel="icon" href="{{url_for('static', filename='images/bs_icon.ico')}}" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-theme.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/c3.min.css') }}">
-    <title>{% block title %}DIGITS{% endblock %}</title>
+    <title>{% block title %}brainstorm DIGITS{% endblock %}</title>
 
     <script src="{{ url_for('static', filename='js/jquery-1.11.1.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
@@ -25,7 +25,9 @@
 <div class="navbar navbar-inverse navbar-fixed-top">
     <div class="container">
         <div class="navbar-header">
-            <a class="navbar-brand" href="/">DIGITS</a>
+            <a href="/">
+                <img href="/" src="{{url_for('static', filename='images/bs_white_transparent.png')}}" alt="brainstorm ai logo" style="width:149;height:64px;padding:10px">
+            </a>
         </div>
         <ul class="nav navbar-nav">
             {% block nav %}

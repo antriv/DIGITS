@@ -244,13 +244,17 @@ class TrainTask(Task):
 
             if data['columns']:
                 # isolate the Loss column data for the sparkline
-                graph_data = data['columns'][0][1:]
+                titles = [item[0] for item in data['columns']] #caffe: ['loss-train', 'train_epochs', 'loss-val', 'accuracy-val', 'val_epochs']
+               
+                data_loss = data['columns'][titles.index("loss-train")][1:]
+                data_acc = data['columns'][titles.index("accuracy-val")][1:]
                 socketio.emit('task update',
                               {
                                   'task': self.html_id(),
                                   'job_id': self.job_id,
                                   'update': 'combined_graph',
-                                  'data': graph_data,
+                                  'data_loss': data_loss,
+                                  'data_acc': data_acc
                               },
                               namespace='/jobs',
                               room='job_management',
@@ -468,7 +472,7 @@ class TrainTask(Task):
                 'xs': {},
                 'axes': {},
                 'names': {},
-                }
+               }
 
         added_train_data = False
         added_val_data = False
