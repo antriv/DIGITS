@@ -249,12 +249,12 @@ class TrainTask(Task):
                 if "loss-train" in titles:
                     data_loss = data['columns'][titles.index("loss-train")][1:]
                 else:
-                    data_loss = None
+                    data_loss = '' # Use empty string (instead of None)
 
                 if "accuracy-val" in titles:
                     data_acc = data['columns'][titles.index("accuracy-val")][1:]
                 else :
-                    data_acc = None
+                    data_acc = '' # Use empty string (instead of None)
 
                 
 

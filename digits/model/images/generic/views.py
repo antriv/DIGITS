@@ -296,6 +296,22 @@ def infer_one():
     if inputs is not None and len(inputs['data']) == 1:
         image = utils.image.embed_image_html(inputs['data'][0])
 
+#    print_image = 0
+#    if print_image == 1:
+#	    import numpy as np
+#	    import PIL.Image
+#	    file_directory = '/home/brainstorm/srodrigues/nnworker/datasets/text/'
+#	   # file_name = '/home/brainstorm/srodrigues/nnworker/datasets/text/' + 'output_predictions.txt'
+#	   # f = open(file_name, 'w')
+#	    res = dict((name, blob.tolist()) for name,blob in outputs.iteritems())['output']
+#	    image = (np.array(res).reshape((32, 32, 3))).astype(np.uint8) # it should be already uint8, but...
+#	    result = PIL.Image.fromarray(image)
+#	    result.save(file_directory+'image.jpg')
+#	   # f.write(str(res))
+#	   # f.close()
+
+
+
     if request_wants_json():
         return flask.jsonify({'outputs': dict((name, blob.tolist()) for name,blob in outputs.iteritems())})
     else:
