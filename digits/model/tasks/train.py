@@ -11,6 +11,7 @@ import gevent
 from digits import device_query
 from digits.task import Task
 from digits.utils import subclass, override
+from digits.utils.forms import get_data_from_title_array
 
 # NOTE: Increment this everytime the picked object changes
 PICKLE_VERSION = 2
@@ -244,19 +245,8 @@ class TrainTask(Task):
 
             if data['columns']:
                 # isolate the Loss column data for the sparkline
-                titles = [item[0] for item in data['columns']] #caffe: ['loss-train', 'train_epochs', 'loss-val', 'accuracy-val', 'val_epochs']
-               
-                if "loss-train" in titles:
-                    data_loss = data['columns'][titles.index("loss-train")][1:]
-                else:
-                    data_loss = '' # Use empty string (instead of None)
-
-                if "accuracy-val" in titles:
-                    data_acc = data['columns'][titles.index("accuracy-val")][1:]
-                else :
-                    data_acc = '' # Use empty string (instead of None)
-
-                
+                data_loss = get_data_from_title_array(data['columns'],'loss-train');
+                data_acc = get_data_from_title_array(data['columns'],'accuracy-val');
 
                 socketio.emit('task update',
                               {

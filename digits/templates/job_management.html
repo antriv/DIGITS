@@ -21,15 +21,15 @@
  function update_visability() {
      var count = table.column( 0 ).data().length;
      if (count === 0) {
-         // hide the table
-         $("#job_table_parent").hide();
-         $("#no_jobs_running").show();
+        // hide the table
+        $("#job_table_parent").hide();
+        $("#no_jobs_running").show();
      } else {
-         // show the table
-         $("#job_table_parent").show();
-         $("#no_jobs_running").hide();
-         // redraw the table to force the header and footer to recalculate their widths
-         table.draw();
+        // show the table
+        $("#job_table_parent").show();
+        $("#no_jobs_running").hide();
+        // redraw the table to force the header and footer to recalculate their widths
+        table.draw();
      }
  }
 
@@ -164,7 +164,9 @@
  });
 
  function sparkline(job_id, data) {
-
+    if (!data){
+        return;
+    }
      $("#"+job_id+" .sparkline").sparkline(data, {
        width: '120px',
        height: '25px',
@@ -185,10 +187,11 @@
         lineColor: '#007f00',
         fillColor: '#d4ffaa'
     });
-
-    $("#"+job_id+" .val_acc").html(Math.round(data[data.length-1]*10)/10+"%");
-    //$("#"+job_id+" .val_acc").html(data);
-
+    if (data){
+        $("#"+job_id+" .val_acc").html(Math.round(data[data.length-1]*10)/10+"%");
+    } else {
+        $("#"+job_id+" .val_acc").html("");
+    }
  }
 
  socket.on('task update', function (msg) {

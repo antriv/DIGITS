@@ -41,8 +41,8 @@
     {% set combined_graph_data = job.train_task().combined_graph_data() %}
     {% if combined_graph_data %}
     <script>
-     sparkline("{{job.id()}}", {{combined_graph_data['columns'][0][1:]}});
-     sparkline_acc("{{job.id()}}", {{combined_graph_data['columns'][3][1:]}});
+        sparkline("{{job.id()}}", {{combined_graph_data['columns'][0][1:]}});
+        sparkline_acc("{{job.id()}}", {{combined_graph_data['columns'][3][1:]}});
     </script>
     {% endif %}
     {% endif %}

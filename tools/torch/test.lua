@@ -358,12 +358,12 @@ if opt.testMany == 'yes' then
 else
     -- only one image needs to be predicted
     local im = loadImage(opt.image)
-    print(im:size())
+    --print(im:size())
     local inputShape = getInputTensorShape(im, opt.croplen)
     local network = loadNetwork(opt.networkDirectory, opt.network, class_labels, weights_filename, opt.type, inputShape)
     local model = network.model
     local input = preprocess(im, meanTensor, opt.croplen or network.croplen)
-    print(input:size())
+    --print(input:size())
     assert(input ~= nil, "Failed to load image")
     inputs = torch.Tensor(1, input:size(1), input:size(2), input:size(3))
     inputs[1] = input
