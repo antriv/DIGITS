@@ -600,6 +600,13 @@ local function backupforrecovery(backup_epoch)
 end
 
 
+local function TableToArray(t)
+    local arr = {}
+    for k,v in pairs(t) do table.insert(arr,v) end
+    return arr
+end
+
+
 -- Validation function
 local function Validation(model, loss, epoch, data_loader, data_size, batch_size, confusion, label_function)
 
@@ -667,7 +674,9 @@ local function Validation(model, loss, epoch, data_loader, data_size, batch_size
     local avg_loss = batch_count > 0 and loss_sum / batch_count or 0
     if confusion ~= nil then
         confusion:updateValids()
-        logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss .. ', accuracy = ' .. confusion.totalValid)
+        --confusion_json = utils.dataToJson({utils.dataToJson(confusion.classes), utils.dataToJson(confusion.valids), utils.dataToJson(confusion.mat)})
+        logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss .. ', accuracy = ' .. confusion.totalValid )
+        logmessage.display(0, 'Validation ConfusionMatrix (epoch ' .. epoch .. '): ' .. utils.dataToJson(confusion.mat))
     else
         logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss)
     end

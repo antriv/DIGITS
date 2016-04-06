@@ -69,6 +69,9 @@ socket.on('task update', function (msg) {
         else if (msg['update'] == 'lr_graph') {
             drawLRGraph(msg['data']);
         }
+        else if (msg['update'] == 'confusion_matrix') {
+            drawConfusionMatrix(msg['data']);
+        }
         else if (msg['update'] == 'snapshots') {
             updateSnapshotList(msg['data']);
         }

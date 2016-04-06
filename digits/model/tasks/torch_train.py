@@ -301,7 +301,7 @@ class TorchTrainTask(TrainTask):
             lr = match.group(4)
             lr = float(lr)
             # epoch updates
-            self.send_progress_update(index)
+            self.send_progress_update(index) # this is just updating the completion percentage
 
             self.save_train_output('loss', 'SoftmaxWithLoss', l)
             self.save_train_output('learning_rate', 'LearningRate', lr)
@@ -328,6 +328,16 @@ class TorchTrainTask(TrainTask):
                     self.logger.debug('Network accuracy #%s: %s' % (index, a))
                     self.save_val_output('accuracy', 'Accuracy', a)
             return True
+
+        ## format of output of confusion matrix
+        match = re.match(r'Validation ConfusionMatrix \(epoch (\d+\.?\d*)\): (.*)', message, flags=re.IGNORECASE)
+        if match:
+            index = float(match.group(1))
+            self.logger.debug('Validation confusion matrix epoch #%s.' % (index))
+            self.save_val_output('confusion_matrix', 'ConfusionMatrix', eval(match.group(2)))
+            return True
+
+
 
         # snapshot saved
         if self.saving_snapshot:

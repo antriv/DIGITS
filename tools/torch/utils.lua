@@ -240,6 +240,9 @@ local function dataToJson(data)
     if dtype=='number' then
         return tostring(data)
     end
+    if dtype=='string' then
+        return data
+    end
     -- Handle tables
     if dtype=='table' then
         local rval = '['
@@ -256,6 +259,7 @@ local function dataToJson(data)
     if torch.isTensor(data) then
         return dataToJson(data:float():totable())
     end
+    assert(false, "Unsupported datatype " .. dtype .. " for json conversion.")
 end
 
 utilsClass.correctFinalOutputDim = correctFinalOutputDim
