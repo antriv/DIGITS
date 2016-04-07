@@ -74,47 +74,46 @@
             </script>
             {% endif %}
 
-            {% set lr_graph_data = job.train_task().lr_graph_data() %}
-            {% if lr_graph_data %}
-            <h3>Learning Rate</h3>
             <div id="lr-graph" class="lr-graph"
                 style="height:300px;width:100%;background:white;display:none;border-radius:10px;"></div>
+            {% set lr_graph_data = job.train_task().lr_graph_data() %}
+            {% if lr_graph_data %}
             <script>
+                $("#cm_container").show();
                 drawLRGraph({% autoescape false %}{{lr_graph_data}}{% endautoescape %});
             </script>
             {% endif %}
 
-
-            {% set cm_data = job.train_task().confusion_matrix_val_data() %}
-            {% if cm_data %}
-            <style>
-                .background { fill: #fff; }
-                line { stroke: #fff;}
-                text.active { font-weight: bold; }
-            </style>
-            <h3>Confusion Matrix</h3>
-            Order: <select id="cm_order" align="">
-              <option value="name">by Name</option>
-              <option value="index">by Index</option>
-              <option value="count">by Frequency</option>
-            </select>
-            <div align="center">
-            <p id="cm_epoch_label" style="font-size:10px;text-align:center">Epoch 0</p>
-            <input id="cm_epoch" style="width:100px;" align="center" type="range" value="0" min="0" max="0" >
+            <div id="cm_container" class="confusion-matrix">
+                <style>
+                    .background { fill: #fff; }
+                    line { stroke: #fff;}
+                    text.active { font-weight: bold; }
+                </style>
+                <h3>Confusion Matrix</h3>
+                Order: <select id="cm_order" align="">
+                  <option value="name">by Name</option>
+                  <option value="index">by Index</option>
+                  <option value="count">by Frequency</option>
+                </select>
+                <div align="center" class="confusion-matrix">
+                <p id="cm_epoch_label" style="font-size:10px;text-align:center">Epoch 0</p>
+                <input id="cm_epoch" style="width:100px;" align="center" type="range" value="0" min="0" max="0" >
+                </div>
+                <div id="confusion-matrix" class="confusion-matrix"
+                     align="center" style="height: 350px;width:100%;display:none;"></div>
             </div>
-            <div id="confusion-matrix" class="confusion-matrix"
-                 align="center" style="height: 350px;width:100%;display:none;"></div>
-            
-   
-            <script>
-                drawConfusionMatrix({% autoescape false %}{{cm_data}}{% endautoescape %});
-            </script>
+            {% set cm_data = job.train_task().confusion_matrix_val_data() %}
+            {% if cm_data %}       
+                <script>
+                    $("#cm_container").show();
+                    drawConfusionMatrix({% autoescape false %}{{cm_data}}{% endautoescape %});
+                </script>
+            {% else %}
+                <script>
+                    $("#cm_container").hide();
+                </script>
             {% endif %}
-
-
-
-
-
 
 
             {% set task = job.train_task() %}

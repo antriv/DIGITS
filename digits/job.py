@@ -267,9 +267,13 @@ class Job(StatusCls):
         """
         return False
 
-    def parent_jobs(self):
+    def parent_job(self):
         """
         Returns the list of the jobs on which the job
         depends
         """
-        raise NotImplementedError('Implement me!') #@TODO
+        return []
+
+
+
+

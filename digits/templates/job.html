@@ -251,10 +251,9 @@ $('#delete-job').on('click', function(event) {
                     <div class="panel-group">
                         <!-- Related model jobs -->
                         {% for r_job in related_jobs %}
-                        {% if r_job.job_type() == "Image Classification Model" or r_job.job_type() == "Generic Image Model"%}
-                        {% if r_jobs_model != 1 %}
-                            <h4 class="panel-title">{{r_job.job_type()}}</h4><br/>
-                            {% set r_jobs_model = 1 %}
+                        {% if prev_job_model != r_job.job_type() %}
+                            <h4 class="panel-title" style="margin:10px">{{r_job.job_type()}}</h4>
+                            {% set prev_job_model = r_job.job_type() %}
                         {% endif %}
                         <div id="{{r_job.id()}}-status" class="panel panel-{{ r_job.status.css }}">
                             <div class="panel-heading">
@@ -263,11 +262,22 @@ $('#delete-job').on('click', function(event) {
                                         {{ r_job.name() }}
                                         <small>{{r_job.status.name}}</small>
                                     </a>
+                                    <a data-toggle="collapse" href="#{{r_job.id()}}-status-collapse" style="float:right">
+                                        <span class="caret"></span>
+                                    </a>
                                 </h4>
-                            </div> 
+                            </div>
+                            <div id="{{r_job.id()}}-status-collapse" class="panel-collapse collapse">
+                                <div class="panel-body">
+                                    <div class="task-statuses">
+                                        {% with updates = r_job.status_history %}
+                                            {% include "status_updates.html" %}
+                                        {% endwith %}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        {% endif %}
-                        {% endfor %}
+                          {% endfor %}
                     </div>
                 </div>
             </div>

@@ -319,6 +319,7 @@ function drawConfusionMatrix(cm_data) {
     refreshGraph(cm_data, this.value);
   });
 
+  //Render and set to default epoch
   refreshGraph(cm_data, n_epoch-1);
   d3.select("#cm_epoch")
     .attr("value",n_epoch-1)

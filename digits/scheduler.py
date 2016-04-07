@@ -214,12 +214,23 @@ class Scheduler:
         whose parent contains job
         """
         related_jobs = []
+
+        if 'Model' in job.job_type():
+            datajob = job.parent_job()[0]
+        else:
+            datajob = job
+
         for j in self.jobs:
-            try:
-                if job in self.jobs[j].parent_jobs():
+            print('his job:')
+            print(self.jobs[j])
+
+            if 'Model' in job.job_type():
+                if datajob == self.jobs[j]:
                     related_jobs.append(self.jobs[j])
-            except NotImplementedError: 
-                pass
+    
+            if datajob in self.jobs[j].parent_job():
+                related_jobs.append(self.jobs[j])
+
         return related_jobs
 
     def abort_job(self, job_id):

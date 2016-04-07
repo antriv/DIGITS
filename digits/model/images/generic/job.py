@@ -56,5 +56,5 @@ class GenericImageModelJob(ImageModelJob):
         return download_files
         
     @override
-    def parent_jobs(self):
+    def parent_job(self):
         return [self.train_task().dataset]
