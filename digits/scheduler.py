@@ -221,9 +221,6 @@ class Scheduler:
             datajob = job
 
         for j in self.jobs:
-            print('his job:')
-            print(self.jobs[j])
-
             if 'Model' in job.job_type():
                 if datajob == self.jobs[j]:
                     related_jobs.append(self.jobs[j])
