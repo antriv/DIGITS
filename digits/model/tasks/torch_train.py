@@ -258,6 +258,20 @@ class TorchTrainTask(TrainTask):
         if self.pretrained_model:
             args.append('--weights=%s' % self.path(self.pretrained_model))
 
+
+        # Augmentations
+        assert self.data_aug['flip'] in ['none', 'fliplr', 'flipud', 'fliplrud'], 'Bad or unknown flag "flip"'
+        args.append('--augFlip=%s' % self.data_aug['flip'])
+
+        assert self.data_aug['quad_rot'] in ['none', 'rot90', 'rot180', 'rotall'], 'Bad or unknown flag "quad_rot"'
+        args.append('--augQuadRot=%s' % self.data_aug['quad_rot'])
+
+        if self.data_aug['rot_use']:
+            args.append('--augRot=%s' % self.data_aug['rot'])
+        else:
+            args.append('--augRot=0')
+
+
         return args
 
     @override

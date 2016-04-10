@@ -43,6 +43,7 @@ class TrainTask(Task):
         crop_size -- crop each image down to a square of this size
         use_mean -- subtract the dataset's mean file or mean pixel
         random_seed -- optional random seed
+        aug_* -- dataset augmentation @TODO [not documented because under development]
         """
         self.gpu_count = kwargs.pop('gpu_count', None)
         self.selected_gpus = kwargs.pop('selected_gpus', None)
@@ -56,6 +57,8 @@ class TrainTask(Task):
         self.shuffle = kwargs.pop('shuffle', None)
         self.network = kwargs.pop('network', None)
         self.framework_id = kwargs.pop('framework_id', None)
+
+        self.data_aug    = kwargs.pop('data_aug', None)
 
         super(TrainTask, self).__init__(**kwargs)
         self.pickver_task_train = PICKLE_VERSION

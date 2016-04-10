@@ -220,7 +220,8 @@ local function preprocess(im, mean, croplen)
     -- Depending on the function arguments, image preprocess may include conversion from RGB to BGR and mean subtraction, image resize after mean subtraction
     local image_preprocessed = data.PreProcess(im, -- input image
                                                mean, -- mean
-                                               false, -- do not mirror
+                                               'none', 'none', -- augFlip, augQuadRot
+                                               0, 0, -- scale and arbitrary rotation augmentation
                                                false, -- do not crop
                                                false, -- test mode
                                                nil, nil, nil -- crop parameters (all nil)
@@ -233,7 +234,8 @@ local function preprocess(im, mean, croplen)
         c = (image_size[2]-croplen)/2 + 1
         image_preprocessed = data.PreProcess(image_preprocessed, -- input image
                                              nil, -- no mean subtraction (this was done before)
-                                             false, -- do not mirror
+                                             'none', 'none', -- augFlip, augQuadRot
+                                             0, 0, -- scale and arbitrary rotation augmentation
                                              true, -- crop
                                              false, -- test mode
                                              c, c, croplen -- crop parameters

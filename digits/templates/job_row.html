@@ -42,7 +42,8 @@
     {% if combined_graph_data %}
     <script>
         sparkline("{{job.id()}}", {{combined_graph_data['columns'][0][1:]}});
-        sparkline_acc("{{job.id()}}", {{combined_graph_data['columns'][3][1:]}});
+        //sparkline_acc("{{job.id()}}", {{combined_graph_data['columns'][3][1:]}}); 
+        //@TODO: the above needs to be better. not [3] but ['accuracy'] for example.
     </script>
     {% endif %}
     {% endif %}
