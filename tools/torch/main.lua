@@ -701,9 +701,12 @@ local function Validation(model, loss, epoch, data_loader, data_size, batch_size
     local avg_loss = batch_count > 0 and loss_sum / batch_count or 0
     if confusion ~= nil then
         confusion:updateValids()
-        --confusion_json = utils.dataToJson({utils.dataToJson(confusion.classes), utils.dataToJson(confusion.valids), utils.dataToJson(confusion.mat)})
         logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss .. ', accuracy = ' .. confusion.totalValid )
-        logmessage.display(0, 'Validation ConfusionMatrix (epoch ' .. epoch .. '): ' .. utils.dataToJson(confusion.mat))
+
+        -- Only output confusion matrices within a given size, or it gets too big to parse and/or handle.
+        if #confusion.classes < 101 then
+            logmessage.display(0, 'Validation ConfusionMatrix (epoch ' .. epoch .. '): ' .. utils.dataToJson(confusion.mat))
+        end
     else
         logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss)
     end
