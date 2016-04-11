@@ -1011,16 +1011,17 @@ class CaffeTrainTask(TrainTask):
         return False
 
     @override
-    def infer_one(self, data, snapshot_epoch=None, layers=None, gpu=None):
+    def infer_one(self, data, snapshot_epoch=None, layers=None, resize_override=None, gpu=None):
         if isinstance(self.dataset, dataset.ImageClassificationDatasetJob) or isinstance(self.dataset, dataset.GenericImageDatasetJob):
             return self.infer_one_image(data,
                     snapshot_epoch=snapshot_epoch,
                     layers=layers,
+                    resize_override=resize_override,
                     gpu=gpu,
                     )
         raise NotImplementedError()
 
-    def infer_one_image(self, image, snapshot_epoch=None, layers=None, gpu=None):
+    def infer_one_image(self, image, snapshot_epoch=None, layers=None, resize_override=None, gpu=None):
         """
         Run inference on one image for a generic model
         Returns (output, visualizations)

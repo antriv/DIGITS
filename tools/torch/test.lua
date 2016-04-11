@@ -44,8 +44,8 @@ opt = lapp[[
 --visualization (default no) Create HDF5 database with layers weights and activations. Depends on --testMany~=yes
 --crop (default no) If this option is 'yes', all the images are cropped into square image. And croplength is provided as --croplen parameter
 --croplen (default 0) crop length. This is required parameter when crop option is provided
+--resize_override (default no) crop length. This is required parameter when crop option is provided
 ]]
-
 
 torch.setnumthreads(opt.threads)
 
@@ -208,10 +208,20 @@ end
 -- preprocess image (subtract mean and crop)
 local function preprocess(im, mean, croplen)
 
+    if opt.resize_override == 'yes' then
+        -- Resize the mean just to fill the entire image.. setting to nil can create a huge discrepancy on networks that have a mean included during training
+        if mean then
+            mean = image.scale(mean, im:size(2), im:size(3), 'bilinear')
+        end
+        -- Set the crop to nothing
+        croplen = nil
+    end
+
     -- Depending on the function arguments, image preprocess may include conversion from RGB to BGR and mean subtraction, image resize after mean subtraction
     local image_preprocessed = data.PreProcess(im, -- input image
                                                mean, -- mean
-                                               false, -- do not mirror
+                                               'none', 'none', -- augFlip, augQuadRot
+                                               0, 0, -- scale and arbitrary rotation augmentation
                                                false, -- do not crop
                                                false, -- test mode
                                                nil, nil, nil -- crop parameters (all nil)
@@ -224,7 +234,8 @@ local function preprocess(im, mean, croplen)
         c = (image_size[2]-croplen)/2 + 1
         image_preprocessed = data.PreProcess(image_preprocessed, -- input image
                                              nil, -- no mean subtraction (this was done before)
-                                             false, -- do not mirror
+                                             'none', 'none', -- augFlip, augQuadRot
+                                             0, 0, -- scale and arbitrary rotation augmentation
                                              true, -- crop
                                              false, -- test mode
                                              c, c, croplen -- crop parameters
@@ -349,10 +360,12 @@ if opt.testMany == 'yes' then
 else
     -- only one image needs to be predicted
     local im = loadImage(opt.image)
+    --print(im:size())
     local inputShape = getInputTensorShape(im, opt.croplen)
     local network = loadNetwork(opt.networkDirectory, opt.network, class_labels, weights_filename, opt.type, inputShape)
     local model = network.model
     local input = preprocess(im, meanTensor, opt.croplen or network.croplen)
+    --print(input:size())
     assert(input ~= nil, "Failed to load image")
     inputs = torch.Tensor(1, input:size(1), input:size(2), input:size(3))
     inputs[1] = input

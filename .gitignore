@@ -3,6 +3,7 @@
 *.log
 *.pyc
 *.swp
+*.sublime-*
 
 # Ignore emacs backup files
 *~

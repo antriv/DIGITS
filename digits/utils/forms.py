@@ -309,3 +309,16 @@ def fill_form_if_cloned(form):
     if clone is not None:
         clone_job = scheduler.get_job(clone)
         fill_form_from_job(clone_job, form)
+
+## Given a array of arrays, of which in the deepest array the first index
+## contains a string with the title, return the data after that title as array.
+def get_data_from_title_array(data, title):
+    titles = [item[0] for item in data]
+    if title in titles:
+        return data[titles.index(title)][1:]
+    else:
+        return '' # Use empty string (instead of None)
+
+
+
+

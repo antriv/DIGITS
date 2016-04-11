@@ -39,15 +39,86 @@ local function all_keys(cursor_,key_,op_)
         end)
 end
 
-local PreProcess = function(y, meanTensor, mirror, crop, train, cropY, cropX, croplen)
+
+-- Scale augmentation, rescales but returns the same size
+local reSampleScale = function(scaleRange)
+    local applyReSample = function(Data)
+        local sizeImg = Data:size()
+        local szx = torch.random(math.ceil(sizeImg[3]*scaleRange)) -- maximum extra size
+        local szy = torch.random(math.ceil(sizeImg[2]*scaleRange)) -- maximum extra size
+        local startx = torch.random(szx)
+        local starty = torch.random(szy)
+        return image.scale(Data:narrow(2,starty,sizeImg[2]-szy):narrow(3,startx,sizeImg[3]-szx),sizeImg[3],sizeImg[2])
+    end
+    return applyReSample
+end
+
+-- Arbitrary rotation augmentation
+local rotate = function(angleRange)
+    local applyRot = function(Data)
+        local angle = torch.randn(1)[1]*angleRange
+        local rot = image.rotate(Data,math.rad(angle),'bilinear')
+        return rot
+    end
+    return applyRot
+end
+
+-- Quadrilateral rotation (options {0 1 2 3}={0,rot90,rot270,rot180})
+-- Note rotating like this in 90 degree steps is extremely efficient
+local rot90 = function(rotFlag)
+    local applyRot90 = function(Data)
+        local rot
+        if rotFlag == 2 then
+            rot = Data:transpose(2,3) --switch X and Y dimentions @TODO: TEST ME
+            rot = image.vflip(rot)
+        elseif rotFlag == 3 then
+            rot = Data:transpose(2,3) --switch X and Y dimentions @TODO: TEST ME
+            rot = image.hflip(rot)
+        elseif rotFlag == 4 then
+            rot = image.hflip(Data)
+            rot = image.vflip(rot)
+            return rot
+        end
+        -- Any other flag than {2,3,4} will return the original data
+        return Data
+    end
+    return applyRot90
+end
+
+
+local PreProcess = function(y, meanTensor, augFlip, augQuadRot, augscale, augRot, crop, train, cropY, cropX, croplen)
     if meanTensor then
         for i=1,meanTensor:size(1) do
             y[i]:add(-meanTensor[i])
         end
     end
-    if mirror and torch.FloatTensor.torch.uniform() > 0.49 then
+
+    -- augFlip {none, fliplr, flipud, fliplrud}
+    if (augFlip == 'fliplr' or  augFlip == 'fliplrud') and torch.random(2)==1 then 
         y = image.hflip(y)
     end
+    if (augFlip == 'flipud' or  augFlip == 'fliplrud') and torch.random(2)==1 then
+        y = image.vflip(y)
+    end
+
+    -- augQuadRot {none, rot90, rot180, rotall}
+    if augQuadRot == 'rot90' then 
+        y = rot90(torch.random(3))(y)
+    elseif augQuadRot == 'rot180' and torch.random(2)==1 then
+        y = rot90(3)(y)
+    elseif augQuadRot == 'rotall' then
+        y = rot90(torch.random(4))(y) -- Randomly choose one of four rotations
+    end
+
+    
+    if augscale > 0.01 then
+       y = reSampleScale(augscale)(y)
+    end
+
+    if augRot >0.01 then
+        y = rotate(augRot)(y)
+    end
+
     if crop then
 
         if train == true then
@@ -167,7 +238,8 @@ end
 
 -- Meta class
 DBSource = {mean = nil, ImageChannels = 0, ImageSizeY = 0, ImageSizeX = 0, total=0,
-            mirror=false, crop=false, croplen=0, cropY=0, cropX=0, subtractMean=true,
+           -- mirror=false, 
+            crop=false, croplen=0, cropY=0, cropX=0, subtractMean=true,
             train=false, classification=false}
 
 -- Derived class method new
@@ -181,7 +253,7 @@ DBSource = {mean = nil, ImageChannels = 0, ImageSizeY = 0, ImageSizeX = 0, total
 --  isTrain (boolean): whether this is a training database (e.g. mirroring not applied to validation database)
 --  shuffle (boolean): whether samples should be shuffled
 --  classification (boolean): whether this is a classification task
-function DBSource:new (backend, db_path, labels_db_path, mirror, meanTensor, isTrain, shuffle, classification)
+function DBSource:new (backend, db_path, labels_db_path, meanTensor, isTrain, shuffle, classification)
     local self = copy(DBSource)
     local paths = require('paths')
 
@@ -278,7 +350,7 @@ function DBSource:new (backend, db_path, labels_db_path, mirror, meanTensor, isT
 
     logmessage.display(0,'Image channels are ' .. self.ImageChannels .. ', Image width is ' .. self.ImageSizeY .. ' and Image height is ' .. self.ImageSizeX)
 
-    self.mirror = mirror
+    --self.mirror = mirror
     self.train = isTrain
     self.shuffle = shuffle
     self.classification = classification
@@ -305,6 +377,14 @@ function DBSource:setCropLen(croplen)
         self.cropY = math.floor((self.ImageSizeY - croplen)/2) + 1
         self.cropX = math.floor((self.ImageSizeX - croplen)/2) + 1
     end
+end
+
+-- Derived class method setDataAugmentation
+function DBSource:setDataAugmentation(augFlip, augQuadRot, augscale, augRot)
+    self.augFlip = augFlip
+    self.augQuadRot = augQuadRot
+    self.augscale = augscale
+    self.augRot = augRot
 end
 
 -- Derived class method inputTensorShape
@@ -432,7 +512,6 @@ end
 -- @parameter batchSize Number of samples to load
 -- @parameter idx Current index within database
 function DBSource:nextBatch (batchsize, idx)
-
     local Images
     if self.crop then
         Images = torch.Tensor(batchsize, self.ImageChannels, self.croplen, self.croplen)
@@ -461,7 +540,8 @@ function DBSource:nextBatch (batchsize, idx)
             label = label + 1
         end
 
-        Images[i] = PreProcess(y, self.mean, self.mirror, self.crop, self.train, self.cropY, self.cropX, self.croplen)
+        Images[i] = PreProcess(y, self.mean, self.augFlip, self.augQuadRot, self.augscale, self.augRot,
+                self.crop, self.train, self.cropY, self.cropX, self.croplen)
 
         Labels[i] = label
     end
@@ -507,7 +587,7 @@ DataLoader = {}
 -- @param isTrain (boolean) whether this is a training database (e.g. mirroring not applied to validation database)
 -- @param shuffle (boolean) whether samples should be shuffled
 -- @param classification (boolean) whether this is a classification task
-function DataLoader:new (numThreads, package_path, backend, db_path, labels_db_path, mirror, mean, isTrain, shuffle, classification)
+function DataLoader:new (numThreads, package_path, backend, db_path, labels_db_path, mean, isTrain, shuffle, classification)
     local self = copy(DataLoader)
     self.backend = backend
     if self.backend == 'hdf5' then
@@ -524,7 +604,8 @@ function DataLoader:new (numThreads, package_path, backend, db_path, labels_db_p
             require('data')
             -- executes in reader thread, variables are local to this thread
             db = DBSource:new(backend, db_path, labels_db_path,
-                              mirror, mean,
+                              --mirror, 
+                              mean,
                               isTrain,
                               shuffle,
                               classification
@@ -651,6 +732,25 @@ function DataLoader:setCropLen(croplen)
     -- return to non-specific mode
     self.threadPool:specific(false)
 end
+
+-- set dataset augmentation parameters (calls setDataAugmentation() method of all DB intances)
+function DataLoader:setDataAugmentation(augFlip, augQuadRot, augscale, augRot)
+    -- switch to specific mode so we can specify which thread to add job to
+    self.threadPool:specific(true)
+    for i=1,self.numThreads do
+        self.threadPool:addjob(
+                    i,
+                    function()
+                        if db then
+                            db:setDataAugmentation(augFlip, augQuadRot, augscale, augRot)
+                        end
+                    end
+                )
+    end
+    -- return to non-specific mode
+    self.threadPool:specific(false)
+end
+
 
 return{
     loadLabels = loadLabels,
