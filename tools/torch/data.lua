@@ -10,6 +10,7 @@ package.path = debug.getinfo(1, "S").source:match[[^@?(.*[\/])[^\/]-$]] .."?.lua
 
 require 'logmessage'
 local ffi = require 'ffi'
+local tds = check_require 'tds'
 
 -- enable shared serialization to speed up Tensor passing between threads
 threads.Threads.serialization('threads.sharedserialize')
