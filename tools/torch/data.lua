@@ -400,7 +400,7 @@ end
 
 -- Derived class method lmdb_getKeys
 function DBSource:lmdb_getKeys ()
-    local Keys = {}
+    local Keys = tds.Vec()
     local i=0
     local key=nil
     for k,v in all_keys(self.lmdb_data.c,nil,self.lightningmdb.MDB_NEXT) do
