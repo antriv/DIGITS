@@ -421,9 +421,10 @@ end
 
 -- Augmentation parameters
 trainDataLoader:setDataAugmentation(opt.augFlip, opt.augQuadRot, opt.augscale, opt.augRot)
-if valDataLoader then
-    valDataLoader:setDataAugmentation(opt.augFlip, opt.augQuadRot, opt.augscale, opt.augRot)
-end
+-- Note: no data augmentation for the validation set!
+--if valDataLoader then
+--    valDataLoader:setDataAugmentation(opt.augFlip, opt.augQuadRot, opt.augscale, opt.augRot)
+--end
 
 
 
@@ -830,9 +831,7 @@ logmessage.display(0,'started training the model')
 -- run an initial validation before the first train epoch
 if opt.validation ~= '' then
     logmessage.display(0,'Running initial validation before first train epoch..')
-    --@ TODO FIXME
-    logmessage.display(0,'>>> @TODO FIX ME FIX ME FIX ME @FIXME @TODO: TURNED OFF INITIAL VALIDATION!! <<<')
-    --Validation(model, loss, 0, valDataLoader, valSize, valBatchSize, valConfusion, labelFunction)
+    Validation(model, loss, 0, valDataLoader, valSize, valBatchSize, valConfusion, labelFunction)
 end
 
 while epoch<=opt.epoch do
