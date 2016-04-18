@@ -357,6 +357,10 @@ function DBSource:new (backend, db_path, labels_db_path, meanTensor, isTrain, sh
     self.train = isTrain
     self.shuffle = shuffle
     self.classification = classification
+    self.augFlip = 'none'
+    self.augQuadRot = 'none'
+    self.augscale = 0
+    self.augRot = 0
 
     if self.classification then
         assert(self.label_width == 1, 'expect scalar labels for classification tasks')
