@@ -107,6 +107,41 @@ $("#dataset").change(function() {
                     {{form.use_mean.tooltip}}
                     {{form.use_mean(class='form-control')}}
                 </div>
+                <div class="form-group{{mark_errors([form.aug_flip])}}">
+                    {{form.aug_flip.label}}
+                    {{form.aug_flip.tooltip}}
+                    {{form.aug_flip(class='form-control')}}
+                </div>
+                <div class="form-group{{mark_errors([form.aug_quadrot])}}">
+                    {{form.aug_quadrot.label}}
+                    {{form.aug_quadrot.tooltip}}
+                    {{form.aug_quadrot(class='form-control')}}
+                </div>
+
+                {{form.aug_rot_use}}
+                {{form.aug_rot_use.label}}
+                {{form.aug_rot_use.tooltip}} 
+                <div class="row cl-augmentation-rotation">
+                    <div class="form-group col-sm-6{{ ' has-error' if form.aug_rot.errors else '' }}">
+                        {{ form.aug_rot.label }}
+                        {{ form.aug_rot(class='form-control') }}
+                    </div>
+                </div>
+                <script>
+                function hasAugmentationRotationChanged() {
+                    if ($("#aug_rot_use").prop("checked"))
+                    {
+                        $(".cl-augmentation-rotation").show();
+                    }
+                    else
+                    {
+                        $(".cl-augmentation-rotation").hide();
+                    }
+                }
+                $("#aug_rot_use").click(hasAugmentationRotationChanged);
+                hasAugmentationRotationChanged();
+                </script>
+                
             </div>
         </div>
     </div>

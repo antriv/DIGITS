@@ -46,7 +46,6 @@ Usage details:
 --augFlip (default none) options {none, fliplr, flipud, fliplrud}
 --augQuadRot (default none) options {none, rot90, rot180, rotall}
 --augRot(default 0) arbitrary rotation (input in degrees ±)
-
 --augscale (default 0.0) Random scaling ± this parameter
 
 --train_labels (default '') location in which train labels db exists. Optional, use this if train db does not contain target labels.
@@ -106,12 +105,7 @@ opt.crop = opt.crop == 'yes' or false
 opt.shuffle = opt.shuffle == 'yes' or false
 opt.visualizeModel = opt.visualizeModel == 'yes' or false
 
-print('opt.augFlip:')
-print(opt.augFlip)
-print('opt.augQuadRot:')
-print(opt.augQuadRot)
-print('opt.augRot:')
-print(opt.augRot)
+logmessage.display(0, 'opt.subtractMean:' .. opt.subtractMean .. ' opt.augFlip:'.. opt.augFlip ..' opt.augQuadRot:' .. opt.augQuadRot .. ' opt.augRot:' .. opt.augRot)
 
 -- Set the seed of the random number generator to the given number.
 if opt.seed ~= '' then
@@ -730,7 +724,6 @@ local function Train(epoch, dataLoader)
 
     local t = 1
     while t <= trainSize do
-
         while dataLoader:acceptsjob() do
             local dataBatchSize = math.min(trainSize-dataLoaderIdx+1,trainBatchSize)
             if dataBatchSize > 0 then
@@ -822,6 +815,7 @@ local function Train(epoch, dataLoader)
         end
 
     end
+    
 
     --xlua.progress(trainSize, trainSize)
 
@@ -835,6 +829,7 @@ logmessage.display(0,'started training the model')
 
 -- run an initial validation before the first train epoch
 if opt.validation ~= '' then
+    logmessage.display(0,'Running initial validation before first train epoch..')
     Validation(model, loss, 0, valDataLoader, valSize, valBatchSize, valConfusion, labelFunction)
 end
 
