@@ -72,10 +72,12 @@ local rot90 = function(rotFlag)
         if rotFlag == 2 then
             rot = Data:transpose(2,3) --switch X and Y dimentions @TODO: TEST ME
             rot = image.vflip(rot)
+            return rot
         elseif rotFlag == 3 then
             rot = Data:transpose(2,3) --switch X and Y dimentions @TODO: TEST ME
             rot = image.hflip(rot)
-        elseif rotFlag == 4 then
+            return rot
+        elseif rotFlag == 4 then -- vflip+hflip=180 deg rotation
             rot = image.hflip(Data)
             rot = image.vflip(rot)
             return rot
@@ -86,8 +88,8 @@ local rot90 = function(rotFlag)
     return applyRot90
 end
 
-
-local PreProcess = function(y, meanTensor, augFlip, augQuadRot, augscale, augRot, crop, train, cropY, cropX, croplen)
+--PreProcess will be called per single image
+local PreProcess = function(y, meanTensor, augFlip, augQuadRot, augScale, augRot, crop, train, cropY, cropX, croplen)
     if meanTensor then
         for i=1,meanTensor:size(1) do
             y[i]:add(-meanTensor[i])
@@ -108,12 +110,12 @@ local PreProcess = function(y, meanTensor, augFlip, augQuadRot, augscale, augRot
     elseif augQuadRot == 'rot180' and torch.random(2)==1 then
         y = rot90(3)(y)
     elseif augQuadRot == 'rotall' then
-        y = rot90(torch.random(4))(y) -- Randomly choose one of four rotations
+        local random_rot = torch.random(4)
+        y = rot90(random_rot)(y) -- Randomly choose one of four rotations
     end
-
     
-    if augscale > 0.01 then
-       y = reSampleScale(augscale)(y)
+    if augScale > 0.01 then
+       y = reSampleScale(augScale)(y)
     end
 
     if augRot >0.01 then

@@ -830,7 +830,9 @@ logmessage.display(0,'started training the model')
 -- run an initial validation before the first train epoch
 if opt.validation ~= '' then
     logmessage.display(0,'Running initial validation before first train epoch..')
-    Validation(model, loss, 0, valDataLoader, valSize, valBatchSize, valConfusion, labelFunction)
+    --@ TODO FIXME
+    logmessage.display(0,'>>> @TODO FIX ME FIX ME FIX ME @FIXME @TODO: TURNED OFF INITIAL VALIDATION!! <<<')
+    --Validation(model, loss, 0, valDataLoader, valSize, valBatchSize, valConfusion, labelFunction)
 end
 
 while epoch<=opt.epoch do
@@ -841,7 +843,6 @@ while epoch<=opt.epoch do
     Train(epoch, trainDataLoader)
     if trainConfusion ~= nil then
         trainConfusion:updateValids()
-        --print(trainConfusion)
         ErrTrain = (1-trainConfusion.totalValid)
     end
     epoch = epoch+1
