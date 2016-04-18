@@ -7,6 +7,7 @@ import time
 
 import flask
 import gevent
+import psutil # Hardware resource monitoring
 
 from digits import device_query
 from digits.task import Task
@@ -183,8 +184,19 @@ class TrainTask(Task):
 
         # this thread continues until killed in after_run()
         while True:
-            data = []
+            # CPU Info
+            data_cpu = {}
+            data_cpu['pid'] = self.p.pid
+            try:
+                ps = psutil.Process(self.p.pid) # 'self.p' is the system call object for the training object
+                data_cpu['mem_uss'] = ps.memory_full_info().uss
+                data_cpu['mem_uss_pct'] = ps.memory_percent(memtype='rss')
+                data_cpu['cpu'] = ps.cpu_percent(interval=1)
+            except: 
+                pass
 
+            # GPU Info
+            data = []
             for index, device in devices:
                 update = {'name': device.name, 'index': index}
                 nvml_info = device_query.get_nvml_info(index)
@@ -194,7 +206,8 @@ class TrainTask(Task):
 
             with app.app_context():
                 html = flask.render_template('models/gpu_utilization.html',
-                        data = data)
+                        data = data,
+                        data_cpu = data_cpu)
 
                 socketio.emit('task update',
                         {
