@@ -124,8 +124,6 @@ def resize_image(image, height, width,
     channels -- channels of new image (stays unchanged if not specified)
     resize_mode -- can be crop, squash, fill or half_crop
     """
-    print('resize_image(..,'+resize_mode+')')
-
     if resize_mode is None:
         resize_mode = 'squash'
     if resize_mode not in ['crop', 'squash', 'fill', 'half_crop', 'none']:
@@ -182,7 +180,6 @@ def resize_image(image, height, width,
         raise ValueError('resize_image() expected a PIL.Image.Image or a numpy.ndarray')
 
     if resize_mode == 'none':
-        print('resize_mode==none')
         return image
 
 

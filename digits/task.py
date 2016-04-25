@@ -56,7 +56,8 @@ class Task(StatusCls):
             del d['aborted']
         if 'logger' in d:
             del d['logger']
-
+        if 'p' in d:
+            del d['p']
         return d
 
     def __setstate__(self, state):
