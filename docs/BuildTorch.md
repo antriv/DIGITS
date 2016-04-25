@@ -61,8 +61,8 @@ If you haven't done so already, install the HDF5 package:
 
 Install extra luarocks packages:
 ```sh
-% luarocks install image
 % luarocks install "https://raw.github.com/deepmind/torch-hdf5/master/hdf5-0-0.rockspec"
+% luarocks install tds
 ```
 
 ## LMDB support
