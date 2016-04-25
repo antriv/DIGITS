@@ -12,6 +12,8 @@ require 'logmessage'
 local ffi = require 'ffi'
 local tds = check_require 'tds'
 
+local tds = check_require 'tds'
+
 -- enable shared serialization to speed up Tensor passing between threads
 threads.Threads.serialization('threads.sharedserialize')
 
@@ -351,7 +353,7 @@ function DBSource:new (backend, db_path, labels_db_path, meanTensor, isTrain, sh
         end
     end
 
-    logmessage.display(0,'Image channels are ' .. self.ImageChannels .. ', Image width is ' .. self.ImageSizeY .. ' and Image height is ' .. self.ImageSizeX)
+    logmessage.display(0,'Image channels are ' .. self.ImageChannels .. ', Image width is ' .. self.ImageSizeX .. ' and Image height is ' .. self.ImageSizeY)
 
     --self.mirror = mirror
     self.train = isTrain
@@ -696,12 +698,12 @@ end
 
 -- wait until next data loader job completes
 function DataLoader:waitNext()
+    -- wait for next data loader job to complete
+    self.threadPool:dojob()
     -- check for errors in loader threads
     if self.threadPool:haserror() then -- check for errors
         self.threadPool:synchronize() -- finish everything and throw error
     end
-    -- wait for next data loader job to complete
-    self.threadPool:dojob()
 end
 
 -- free data loader resources
