@@ -21,15 +21,15 @@
  function update_visability() {
      var count = table.column( 0 ).data().length;
      if (count === 0) {
-         // hide the table
-         $("#job_table_parent").hide();
-         $("#no_jobs_running").show();
+        // hide the table
+        $("#job_table_parent").hide();
+        $("#no_jobs_running").show();
      } else {
-         // show the table
-         $("#job_table_parent").show();
-         $("#no_jobs_running").hide();
-         // redraw the table to force the header and footer to recalculate their widths
-         table.draw();
+        // show the table
+        $("#job_table_parent").show();
+        $("#no_jobs_running").hide();
+        // redraw the table to force the header and footer to recalculate their widths
+        table.draw();
      }
  }
 
@@ -164,12 +164,40 @@
  });
 
  function sparkline(job_id, data) {
-     $("#"+job_id+" .sparkline").sparkline(data, {width: '200px'});
+    if (!data){
+        return;
+    }
+     $("#"+job_id+" .sparkline").sparkline(data, {
+       width: '120px',
+       height: '25px',
+       spotRadius: 0,
+       chartRangeMin: 0
+     });
+ }
+
+ function sparkline_acc(job_id, data) {
+    $("#"+job_id+" .sparkline_acc").sparkline(data, {
+        type: 'line',
+        width: '120',
+        height: '25',
+        barColor: '#00bf00',
+        spotRadius: 0,
+        //chartRangeMin: 0,
+        //chartRangeMax: 100,
+        lineColor: '#007f00',
+        fillColor: '#d4ffaa'
+    });
+    if (data){
+        $("#"+job_id+" .val_acc").html(Math.round(data[data.length-1]*10)/10+"%");
+    } else {
+        $("#"+job_id+" .val_acc").html("");
+    }
  }
 
  socket.on('task update', function (msg) {
      if (msg['update'] == 'combined_graph') {
-         sparkline(msg['job_id'], msg['data']);
+         sparkline(msg['job_id'], msg['data_loss']);
+         sparkline_acc(msg['job_id'], msg['data_acc']);
      }
  });
 
@@ -200,6 +228,8 @@
                 <th>Start Time</th>
                 <th>Status</th>
                 <th>Training Loss</th>
+                <th>Accuracy</th>
+                <th></th>
                 <th>Progress</th>
                 <th></th>
             </tr>

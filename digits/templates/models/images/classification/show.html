@@ -5,6 +5,10 @@
 
 {% block job_content %}
 
+
+
+
+
 <script src="{{ url_for('static', filename='js/model-graphs.js') }}"></script>
 
 {% set task = job.train_task() %}
@@ -48,7 +52,7 @@
     <div class="col-sm-12">
         <div class="well">
             <div id="combined-graph" class="combined-graph"
-                style="height:500px;width:100%;background:white;display:none;"></div>
+                style="height:500px;width:100%;background:white;display:none;border-radius:10px;"></div>
             <span name="combined_graph_explanation"
                             class="explanation-tooltip glyphicon glyphicon-question-sign combined-graph"
                             data-container="body"
@@ -71,13 +75,46 @@
             {% endif %}
 
             <div id="lr-graph" class="lr-graph"
-                style="height:300px;width:100%;background:white;display:none;"></div>
+                style="height:300px;width:100%;background:white;display:none;border-radius:10px;"></div>
             {% set lr_graph_data = job.train_task().lr_graph_data() %}
             {% if lr_graph_data %}
             <script>
+                $("#cm_container").show();
                 drawLRGraph({% autoescape false %}{{lr_graph_data}}{% endautoescape %});
             </script>
             {% endif %}
+
+            <div id="cm_container" class="confusion-matrix">
+                <style>
+                    .background { fill: #fff; }
+                    line { stroke: #fff;}
+                    text.active { font-weight: bold; }
+                </style>
+                <h3>Confusion Matrix</h3>
+                Order: <select id="cm_order" align="">
+                  <option value="name">by Name</option>
+                  <option value="index">by Index</option>
+                  <option value="count">by Frequency</option>
+                </select>
+                <div align="center" class="confusion-matrix">
+                <p id="cm_epoch_label" style="font-size:10px;text-align:center">Epoch 0</p>
+                <input id="cm_epoch" style="width:100px;" align="center" type="range" value="0" min="0" max="0" >
+                </div>
+                <div id="confusion-matrix" class="confusion-matrix"
+                     align="center" style="height: 350px;width:100%;display:none;"></div>
+            </div>
+            {% set cm_data = job.train_task().confusion_matrix_val_data() %}
+            {% if cm_data %}       
+                <script>
+                    $("#cm_container").show();
+                    drawConfusionMatrix({% autoescape false %}{{cm_data}}{% endautoescape %});
+                </script>
+            {% else %}
+                <script>
+                    $("#cm_container").hide();
+                </script>
+            {% endif %}
+
 
             {% set task = job.train_task() %}
             <hr>
@@ -169,6 +206,17 @@ updateSnapshotList({% autoescape false %}{{task.snapshot_list()}}{% endautoescap
                                 class="explanation-tooltip glyphicon glyphicon-question-sign"
                                 data-container="body"
                                 title="For each layer in the network, show statistics for the weights/activations and attempt to represent the data visually. Can delay classification considerably."
+                                ></span>
+                        </div>
+                        <div class="form-group">
+                            <label for="dont_resize">
+                                <input id="dont_resize" name="dont_resize" type="checkbox" value="y">
+                                Do not resize
+                            </label>
+                            <span name="dont_resize_explanation"
+                                class="explanation-tooltip glyphicon glyphicon-question-sign"
+                                data-container="body"
+                                title="RTFMN"
                                 ></span>
                         </div>
                         <button name="classify-one-btn"

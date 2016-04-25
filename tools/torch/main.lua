@@ -21,6 +21,8 @@ require 'logmessage'
 local utils = require 'utils'
 ----------------------------------------------------------------------
 
+--  -g,--mirror (default no) If this option is 'yes', then some of the images are randomly mirrored
+
 opt = lapp[[
 Usage details:
 -a,--threads            (default 8)              number of threads
@@ -28,7 +30,6 @@ Usage details:
 -c,--learningRateDecay (default 1e-6) learning rate decay (in # samples)
 -e,--epoch (default 1) number of epochs to train -1 for unbounded
 -f,--shuffle (default no) shuffle records before train
--g,--mirror (default no) If this option is 'yes', then some of the images are randomly mirrored
 -i,--interval (default 1) number of train epochs to complete, to perform one validation
 -k,--crop (default no) If this option is 'yes', all the images are randomly cropped into square image. And croplength is provided as --croplen parameter
 -l,--croplen (default 0) crop length. This is required parameter when crop option is provided
@@ -41,6 +42,11 @@ Usage details:
 -t,--train (default '') location in which train db exists. This parameter may be omitted only if visualizeModel is 'yes'.
 -v,--validation (default '') location in which validation db exists.
 -w,--weightDecay (default 1e-4) L2 penalty on the weights
+
+--augFlip (default none) options {none, fliplr, flipud, fliplrud}
+--augQuadRot (default none) options {none, rot90, rot180, rotall}
+--augRot(default 0) arbitrary rotation (input in degrees ±)
+--augscale (default 0.0) Random scaling ± this parameter
 
 --train_labels (default '') location in which train labels db exists. Optional, use this if train db does not contain target labels.
 --validation_labels (default '') location in which validation labels db exists. Optional, use this if validation db does not contain target labels.
@@ -96,9 +102,10 @@ COMPUTE_TRAIN_ACCURACY = false
 
 -- Convert boolean options
 opt.crop = opt.crop == 'yes' or false
-opt.mirror = opt.mirror == 'yes' or false
 opt.shuffle = opt.shuffle == 'yes' or false
 opt.visualizeModel = opt.visualizeModel == 'yes' or false
+
+logmessage.display(0, 'opt.subtractMean:' .. opt.subtractMean .. ' opt.augFlip:'.. opt.augFlip ..' opt.augQuadRot:' .. opt.augQuadRot .. ' opt.augRot:' .. opt.augRot)
 
 -- Set the seed of the random number generator to the given number.
 if opt.seed ~= '' then
@@ -215,13 +222,16 @@ logmessage.display(0,'creating data readers')
 local trainDataLoader, trainSize, inputTensorShape
 local valDataLoader, valSize
 
+local num_threads_data_loader = 4
+
 if opt.train ~= '' then
     -- create data loader for training dataset
     trainDataLoader = DataLoader:new(
-            4, -- num threads
+            num_threads_data_loader, -- num threads
             package.path,
             opt.dbbackend, opt.train, opt.train_labels,
-            opt.mirror, meanTensor,
+            --opt.mirror, 
+            meanTensor,
             true, -- train
             opt.shuffle,
             classes ~= nil -- whether this is a classification task
@@ -232,10 +242,10 @@ if opt.train ~= '' then
     if opt.validation ~= '' then
         local shape
         valDataLoader = DataLoader:new(
-                4, -- num threads
+                num_threads_data_loader, -- num threads
                 package.path,
                 opt.dbbackend, opt.validation, opt.validation_labels,
-                false, -- no need to do random mirrorring
+                --false, -- no need to do random mirrorring
                 meanTensor,
                 false, -- train
                 false, -- shuffle
@@ -317,9 +327,9 @@ if opt.visualizeModel then
     os.exit(-1)
 end
 
-if opt.mirror then
-    logmessage.display(0,'mirror option was selected, so during training for some of the random images, mirror view will be considered instead of original image view')
-end
+--if opt.mirror then
+--    logmessage.display(0,'mirror option was selected, so during training for some of the random images, mirror view will be considered instead of original image view')
+--end
 
 -- NOTE: currently randomState option wasn't used in DIGITS. This option was provided to be used from command line, if required.
 -- load random number state from backup
@@ -408,6 +418,18 @@ if opt.crop and inputTensorShape then
         valDataLoader:setCropLen(opt.croplen)
     end
 end
+
+-- Augmentation parameters
+trainDataLoader:setDataAugmentation(opt.augFlip, opt.augQuadRot, opt.augscale, opt.augRot)
+-- Note: no data augmentation for the validation set!
+--if valDataLoader then
+--    valDataLoader:setDataAugmentation(opt.augFlip, opt.augQuadRot, opt.augscale, opt.augRot)
+--end
+
+
+
+
+
 
 --modifying total sizes of train and validation dbs to be the exact multiple of 32, when cc2 is used
 if ccn2 ~= nil then
@@ -600,6 +622,13 @@ local function backupforrecovery(backup_epoch)
 end
 
 
+local function TableToArray(t)
+    local arr = {}
+    for k,v in pairs(t) do table.insert(arr,v) end
+    return arr
+end
+
+
 -- Validation function
 local function Validation(model, loss, epoch, data_loader, data_size, batch_size, confusion, label_function)
 
@@ -667,7 +696,12 @@ local function Validation(model, loss, epoch, data_loader, data_size, batch_size
     local avg_loss = batch_count > 0 and loss_sum / batch_count or 0
     if confusion ~= nil then
         confusion:updateValids()
-        logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss .. ', accuracy = ' .. confusion.totalValid)
+        logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss .. ', accuracy = ' .. confusion.totalValid )
+
+        -- Only output confusion matrices within a given size, or it gets too big to parse and/or handle.
+        if #confusion.classes < 101 then
+            logmessage.display(0, 'Validation ConfusionMatrix (epoch ' .. epoch .. '): ' .. utils.dataToJson(confusion.mat))
+        end
     else
         logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss)
     end
@@ -691,7 +725,6 @@ local function Train(epoch, dataLoader)
 
     local t = 1
     while t <= trainSize do
-
         while dataLoader:acceptsjob() do
             local dataBatchSize = math.min(trainSize-dataLoaderIdx+1,trainBatchSize)
             if dataBatchSize > 0 then
@@ -783,6 +816,7 @@ local function Train(epoch, dataLoader)
         end
 
     end
+    
 
     --xlua.progress(trainSize, trainSize)
 
@@ -796,6 +830,7 @@ logmessage.display(0,'started training the model')
 
 -- run an initial validation before the first train epoch
 if opt.validation ~= '' then
+    logmessage.display(0,'Running initial validation before first train epoch..')
     Validation(model, loss, 0, valDataLoader, valSize, valBatchSize, valConfusion, labelFunction)
 end
 
@@ -807,7 +842,6 @@ while epoch<=opt.epoch do
     Train(epoch, trainDataLoader)
     if trainConfusion ~= nil then
         trainConfusion:updateValids()
-        --print(trainConfusion)
         ErrTrain = (1-trainConfusion.totalValid)
     end
     epoch = epoch+1

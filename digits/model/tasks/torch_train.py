@@ -258,6 +258,20 @@ class TorchTrainTask(TrainTask):
         if self.pretrained_model:
             args.append('--weights=%s' % self.path(self.pretrained_model))
 
+
+        # Augmentations
+        assert self.data_aug['flip'] in ['none', 'fliplr', 'flipud', 'fliplrud'], 'Bad or unknown flag "flip"'
+        args.append('--augFlip=%s' % self.data_aug['flip'])
+
+        assert self.data_aug['quad_rot'] in ['none', 'rot90', 'rot180', 'rotall'], 'Bad or unknown flag "quad_rot"'
+        args.append('--augQuadRot=%s' % self.data_aug['quad_rot'])
+
+        if self.data_aug['rot_use']:
+            args.append('--augRot=%s' % self.data_aug['rot'])
+        else:
+            args.append('--augRot=0')
+
+
         return args
 
     @override
@@ -301,7 +315,7 @@ class TorchTrainTask(TrainTask):
             lr = match.group(4)
             lr = float(lr)
             # epoch updates
-            self.send_progress_update(index)
+            self.send_progress_update(index) # this is just updating the completion percentage
 
             self.save_train_output('loss', 'SoftmaxWithLoss', l)
             self.save_train_output('learning_rate', 'LearningRate', lr)
@@ -328,6 +342,16 @@ class TorchTrainTask(TrainTask):
                     self.logger.debug('Network accuracy #%s: %s' % (index, a))
                     self.save_val_output('accuracy', 'Accuracy', a)
             return True
+
+        ## format of output of confusion matrix
+        match = re.match(r'Validation ConfusionMatrix \(epoch (\d+\.?\d*)\): (.*)', message, flags=re.IGNORECASE)
+        if match:
+            index = float(match.group(1))
+            self.logger.debug('Validation confusion matrix epoch #%s.' % (index))
+            self.save_val_output('confusion_matrix', 'ConfusionMatrix', eval(match.group(2)))
+            return True
+
+
 
         # snapshot saved
         if self.saving_snapshot:
@@ -466,16 +490,18 @@ class TorchTrainTask(TrainTask):
         return None
 
     @override
-    def infer_one(self, data, snapshot_epoch=None, layers=None, gpu=None):
+    def infer_one(self, data, snapshot_epoch=None, layers=None, resize_override=None, gpu=None):
+        print('infer_one(..,resize_override='+resize_override+')')
         if isinstance(self.dataset, ImageClassificationDatasetJob) or isinstance(self.dataset, dataset.GenericImageDatasetJob):
             return self.infer_one_image(data,
                     snapshot_epoch=snapshot_epoch,
                     layers=layers,
+                    resize_override=resize_override,
                     gpu=gpu,
                     )
         raise NotImplementedError('torch infer one')
 
-    def infer_one_image(self, image, snapshot_epoch=None, layers=None, gpu=None):
+    def infer_one_image(self, image, snapshot_epoch=None, layers=None, resize_override=None, gpu=None):
         """
         Classify an image
         Returns (predictions, visualizations)
@@ -525,6 +551,9 @@ class TorchTrainTask(TrainTask):
 
         if snapshot_epoch:
             args.append('--epoch=%d' % int(snapshot_epoch))
+
+        if resize_override:
+            args.append('--resize_override=yes')
 
         if self.use_mean == 'pixel':
             args.append('--subtractMean=pixel')

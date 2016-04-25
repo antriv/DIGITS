@@ -23,7 +23,7 @@ class InferenceTask(Task):
     A task for inference jobs
     """
 
-    def __init__(self, model, images, epoch, layers, **kwargs):
+    def __init__(self, model, images, epoch, layers, resize_override, **kwargs):
         """
         Arguments:
         model  -- trained model to perform inference on
@@ -36,6 +36,7 @@ class InferenceTask(Task):
         self.images = images
         self.epoch = epoch
         self.layers = layers
+        self.resize_override = resize_override
 
         self.image_list_path = None
         self.inference_log_file = "inference.log"
@@ -205,6 +206,9 @@ class InferenceTask(Task):
             args.append('--layers=all')
         else:
             args.append('--layers=none')
+
+        if self.resize_override == 'none':
+            args.append('--resize_override=none')
 
         if self.gpu is not None:
             args.append('--gpu=%d' % self.gpu)

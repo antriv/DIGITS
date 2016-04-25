@@ -8,6 +8,7 @@ require 'trepl'
 require 'image'
 require 'lfs'
 
+
 local dir_path = debug.getinfo(1,"S").source:match[[^@?(.*[\/])[^\/]-$]]
 if dir_path ~= nil then
     package.path = dir_path .."?.lua;".. package.path
@@ -44,8 +45,9 @@ opt = lapp[[
 --visualization (default no) Create HDF5 database with layers weights and activations. Depends on --testMany~=yes
 --crop (default no) If this option is 'yes', all the images are cropped into square image. And croplength is provided as --croplen parameter
 --croplen (default 0) crop length. This is required parameter when crop option is provided
---resize_override (default no) crop length. This is required parameter when crop option is provided
+--csv (default no) If 'yes', will output a csv
 ]]
+
 
 torch.setnumthreads(opt.threads)
 
@@ -113,6 +115,11 @@ if opt.epoch == -1 then
     logmessage.display(2,'There are no pretrained model weights to test in this directory - ' .. paths.concat(opt.networkDirectory))
     os.exit(-1)
 end
+
+
+
+
+
 
 -- returns shape of input tensor (adjusting to desired crop length if specified)
 function getInputTensorShape(img, optCropLen)
@@ -208,20 +215,10 @@ end
 -- preprocess image (subtract mean and crop)
 local function preprocess(im, mean, croplen)
 
-    if opt.resize_override == 'yes' then
-        -- Resize the mean just to fill the entire image.. setting to nil can create a huge discrepancy on networks that have a mean included during training
-        if mean then
-            mean = image.scale(mean, im:size(2), im:size(3), 'bilinear')
-        end
-        -- Set the crop to nothing
-        croplen = nil
-    end
-
     -- Depending on the function arguments, image preprocess may include conversion from RGB to BGR and mean subtraction, image resize after mean subtraction
     local image_preprocessed = data.PreProcess(im, -- input image
                                                mean, -- mean
-                                               'none', 'none', -- augFlip, augQuadRot
-                                               0, 0, -- scale and arbitrary rotation augmentation
+                                               false, -- do not mirror
                                                false, -- do not crop
                                                false, -- test mode
                                                nil, nil, nil -- crop parameters (all nil)
@@ -234,8 +231,7 @@ local function preprocess(im, mean, croplen)
         c = (image_size[2]-croplen)/2 + 1
         image_preprocessed = data.PreProcess(image_preprocessed, -- input image
                                              nil, -- no mean subtraction (this was done before)
-                                             'none', 'none', -- augFlip, augQuadRot
-                                             0, 0, -- scale and arbitrary rotation augmentation
+                                             false, -- do not mirror
                                              true, -- crop
                                              false, -- test mode
                                              c, c, croplen -- crop parameters
@@ -261,18 +257,28 @@ end
 -- tensor of inputs batch size * channels * height * width
 local inputs
 
+
+if opt.csv =='yes' then
+    batch_size = 1 --high batch sizes do not seem much faster
+    require 'Csv'
+    csvfilename = opt.image .. '.csv'
+    csv = Csv(csvfilename, "w", ';')
+    -- note the csv file will be closed later
+
+    prediction_maps = torch.Tensor(table.getn(class_labels),1281,2978) --(1106,1673-delft)
+    tilesize_maps = 2; --per classification (x,y) it will fill on for [x:x+tilesize_maps] and [y:y+tilesize_maps]
+end
+
 -- predict batch and display the topN predictions for the images in batch
-local function predictBatch(inputs, model)
+local function predictBatch(inputs, model, filename_stem)
     if opt.type == 'float' then
         predictions = model:forward(inputs:float())
     elseif opt.type =='cuda' then
         predictions = model:forward(inputs:cuda())
     end
-
     for i=1,counter do
         local prediction
         index = index + 1
-
         if type(predictions) == 'table' then
             prediction = {}
             for j=1,#predictions do
@@ -288,12 +294,10 @@ local function predictBatch(inputs, model)
                 prediction = predictions[i]
             end
         end
-
         if class_labels then
             -- assume logSoftMax and convert to probabilities
             prediction:exp()
         end
-
         if opt.allPredictions == 'no' then
             --display topN predictions of each image
             prediction,classes = prediction:float():sort(true)
@@ -303,9 +307,36 @@ local function predictBatch(inputs, model)
             end
         else
             allPredictions = utils.dataToJson(prediction)
-            logmessage.display(0,'Predictions for image ' .. index ..': '..allPredictions)
+            --logmessage.display(0,'Predictions for image ' .. index ..': '..allPredictions)
+            print(index)
+
+            if opt.csv =='yes' then
+                prediction_table = torch.totable(prediction)
+                table.insert(prediction_table, 1, filename_stem)
+                csv:write(prediction_table)
+                --print(filename_stem)
+
+                x,y = string.match(filename_stem,"(%d+)x(%d+)") --x,y coordinate
+
+                if (x+tilesize_maps>prediction_maps:size(3)) then
+                    --resize
+                end
+                if (y+tilesize_maps>prediction_maps:size(3)) then
+                    --resize
+                end
+
+                for k=1,prediction_maps:size(1) do
+                    -- Below looping is not efficient at all
+                    for xi=x+1,x+1+tilesize_maps do
+                        for yi=y+1,y+1+tilesize_maps do
+                            prediction_maps[k][yi][xi]=prediction[k]
+                        end
+                    end
+                end
+            end
         end
     end
+
 end
 
 if opt.testMany == 'yes' then
@@ -316,6 +347,9 @@ if opt.testMany == 'yes' then
         for line in file:lines() do
             counter = counter + 1
             local image_path = line:match( "^%s*(.-)%s*$" )
+            local image_filename_stem = string.match(image_path, "([^/]+)%.")
+            --print(image_path)
+            --print(image_filename_stem)
             local im = loadImage(image_path)
             local inputShape = getInputTensorShape(im, opt.croplen)
             if not network then
@@ -330,15 +364,13 @@ if opt.testMany == 'yes' then
                 inputs = torch.Tensor(batch_size, input:size(1), input:size(2), input:size(3))
             end
             inputs[counter] = input
-
             if counter == batch_size then
-                predictBatch(inputs, model)
+                predictBatch(inputs, model, image_filename_stem)
                 counter = 0
             end
             if (index+counter) == opt.testUntil then -- Here, index+counter represents total number of images read from file
                 break
             end
-
         end
         -- still some images needs to be predicted.
         if counter > 0 then
@@ -347,25 +379,21 @@ if opt.testMany == 'yes' then
                 for j=counter+1,batch_size do
                     inputs[j] = inputs[counter]
                 end
-                predictBatch(inputs, model)
-
+                predictBatch(inputs, model, image_filename_stem)
             else
-                predictBatch(inputs:narrow(1,1,counter), model)
+                predictBatch(inputs:narrow(1,1,counter), model, image_filename_stem)
             end
         end
     else
         logmessage.display(2,'Image file not found : ' .. opt.image)
     end
-
 else
     -- only one image needs to be predicted
     local im = loadImage(opt.image)
-    --print(im:size())
     local inputShape = getInputTensorShape(im, opt.croplen)
     local network = loadNetwork(opt.networkDirectory, opt.network, class_labels, weights_filename, opt.type, inputShape)
     local model = network.model
     local input = preprocess(im, meanTensor, opt.croplen or network.croplen)
-    --print(input:size())
     assert(input ~= nil, "Failed to load image")
     inputs = torch.Tensor(1, input:size(1), input:size(2), input:size(3))
     inputs[1] = input
@@ -412,4 +440,18 @@ else
         vis_db:close()
     end
 end
+
+
+if opt.csv =='yes' then
+    csv:close()
+    --savePNG('test.png', prediction_maps[{{},{},1}])
+    print(prediction_maps:size())
+    print(prediction_maps:size(1))
+    for i=1,prediction_maps:size(1) do
+        local label_escaped = string.gsub(class_labels[i], "%s+", "_") 
+        image.savePNG(label_escaped..'.png', prediction_maps[i])
+    end
+end
+
+
 

@@ -47,6 +47,7 @@ class Task(StatusCls):
         self.traceback = None
         self.aborted = gevent.event.Event()
         self.set_logger()
+        self.p = None #popen process[TZ]
 
     def __getstate__(self):
         d = self.__dict__.copy()
@@ -194,23 +195,23 @@ class Task(StatusCls):
 
         import sys
         env['PYTHONPATH'] = os.pathsep.join(['.', self.job_dir, env.get('PYTHONPATH', '')] + sys.path)
-        p = subprocess.Popen(args,
+        self.p = subprocess.Popen(args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 cwd=self.job_dir,
                 close_fds=False if platform.system() == 'Windows' else True,
                 env=env,
                 )
-
+        
         try:
             sigterm_time = None # When was the SIGTERM signal sent
             sigterm_timeout = 2 # When should the SIGKILL signal be sent
-            while p.poll() is None:
-                for line in utils.nonblocking_readlines(p.stdout):
+            while self.p.poll() is None:
+                for line in utils.nonblocking_readlines(self.p.stdout):
                     if self.aborted.is_set():
                         if sigterm_time is None:
                             # Attempt graceful shutdown
-                            p.send_signal(signal.SIGTERM)
+                            self.p.send_signal(signal.SIGTERM)
                             sigterm_time = time.time()
                             self.status = Status.ABORT
                         break
@@ -226,11 +227,11 @@ class Task(StatusCls):
                     else:
                         time.sleep(0.05)
                 if sigterm_time is not None and (time.time() - sigterm_time > sigterm_timeout):
-                    p.send_signal(signal.SIGKILL)
+                    self.p.send_signal(signal.SIGKILL)
                     self.logger.warning('Sent SIGKILL to task "%s"' % self.name())
                     time.sleep(0.1)
         except:
-            p.terminate()
+            self.p.terminate()
             self.after_run()
             raise
 
@@ -238,10 +239,10 @@ class Task(StatusCls):
 
         if self.status != Status.RUN:
             return False
-        elif p.returncode != 0:
-            self.logger.error('%s task failed with error code %d' % (self.name(), p.returncode))
+        elif self.p.returncode != 0:
+            self.logger.error('%s task failed with error code %d' % (self.name(), self.p.returncode))
             if self.exception is None:
-                self.exception = 'error code %d' % p.returncode
+                self.exception = 'error code %d' % self.p.returncode
                 if unrecognized_output:
                     if self.traceback is None:
                         self.traceback = '\n'.join(unrecognized_output)
