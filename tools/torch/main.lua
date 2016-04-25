@@ -286,6 +286,7 @@ local parameters = {
         nclasses = (classes ~= nil) and #classes or nil,
         ngpus = nGpus,
         inputShape = inputTensorShape,
+        testing = false,
     }
 network = network_func(parameters)
 local model = network.model

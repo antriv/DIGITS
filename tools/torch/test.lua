@@ -138,6 +138,7 @@ function loadNetwork(dir, name, labels, weightsFile, tensorType, inputTensorShap
         ngpus = (tensorType =='cuda') and 1 or 0,
         nclasses = (labels ~= nil) and #labels or nil,
         inputShape = inputTensorShape,
+        testing = true,
     }
     local network = require (name)(parameters)
     local model = network.model
