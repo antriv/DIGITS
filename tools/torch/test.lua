@@ -26,9 +26,7 @@ opt = lapp[[
 -t,--threads (default 8) number of threads
 -p,--type (default cuda) float or cuda
 -d,--devid (default 1) device ID (if using CUDA)
--o,--load (string) directory that contains trained model weights
 -n,--network (string) Pretrained Model to be loaded
--e,--epoch (default -1) weight file of the epoch to be loaded
 -i,--image (string) the value to this parameter depends on "testMany" parameter. If testMany is 'no' then this parameter specifies single image that needs to be classified or else this parameter specifies the location of file which contains paths of multiple images that needs to be classified. Provide full path, if the image (or) images file is in different directory.
 -s,--mean (default '') train images mean (saved as .jpg file)
 -y,--ccn2 (default no) should be 'yes' if ccn2 is used in network. Default : false
@@ -38,7 +36,7 @@ opt = lapp[[
 --testUntil (default -1) specifies how many images in the "image" file to be tested. This parameter is only valid when testMany is set to "yes"
 --subtractMean (default 'image') Select mean subtraction method. Possible values are 'image', 'pixel' or 'none'.
 --labels (default '') file contains label definitions
---snapshotPrefix (default '') prefix of the weights/snapshots
+--snapshot (string) Path to snapshot to load
 --networkDirectory (default '') directory in which network exists
 --allPredictions (default no) If 'yes', displays all the predictions of an image instead of formatted topN results
 --visualization (default no) Create HDF5 database with layers weights and activations. Depends on --testMany~=yes
@@ -66,14 +64,6 @@ else
     opt.croplen = nil
 end
 
-local snapshot_prefix = ''
-
-if opt.snapshotPrefix ~= '' then
-    snapshot_prefix = opt.snapshotPrefix
-else
-    snapshot_prefix = opt.network
-end
-
 local utils = require 'utils'
 
 local data = require 'data'
@@ -92,28 +82,6 @@ if opt.subtractMean ~= 'none' then
     meanTensor = data.loadMean(opt.mean, opt.subtractMean == 'pixel')
 end
 
--- If epoch for the trained model is not provided then select the latest trained model.
-if opt.epoch == -1 then
-    dir_name = paths.concat(opt.load)
-    for file in lfs.dir(dir_name) do
-        file_name = paths.concat(dir_name,file)
-        if lfs.attributes(file_name,"mode") == "file" then
-            if string.match(file, snapshot_prefix .. '_.*_Model[.]t7') then
-                parts=string.split(file,"_")
-                value = tonumber(parts[#parts-1])
-                if (opt.epoch < value) then
-                    opt.epoch = value
-                end
-            end
-        end
-    end
-end
-
-if opt.epoch == -1 then
-    logmessage.display(2,'There are no pretrained model weights to test in this directory - ' .. paths.concat(opt.networkDirectory))
-    os.exit(-1)
-end
-
 -- returns shape of input tensor (adjusting to desired crop length if specified)
 function getInputTensorShape(img, optCropLen)
     -- create new tensor containing dimensions of input image
@@ -130,7 +98,7 @@ end
 -- * reload weights from snapshot
 -- * move model to CUDA or FLOAT
 -- * adjust last layer to match number of labels (for classification networks)
-function loadNetwork(dir, name, labels, modelFile, tensorType, inputTensorShape)
+function loadNetwork(dir, name, labels, weightsFile, tensorType, inputTensorShape)
     package.path = paths.concat(dir, "?.lua") ..";".. package.path
 
     logmessage.display(0,'Loading network definition from ' .. paths.concat(dir, name))
@@ -140,14 +108,28 @@ function loadNetwork(dir, name, labels, modelFile, tensorType, inputTensorShape)
         inputShape = inputTensorShape
     }
     local network = require (name)(parameters)
-    logmessage.display(0, 'Loading ' .. modelFile)
-    local model = torch.load(modelFile)
-    network.model = model
+    local model
+    if (string.find(weightsFile, '_Weights')) then
+        -- snapshot was created by dumping learnable weights/bias into a file
+        -- this means other parameters such as those used for batch normalization
+        -- could be missing, which could lead to incorrect predictions
+        model = network.model
 
-    -- allow user to fine tune model
-    if network.fineTuneHook then
-        logmessage.display(0,'Calling user-defined fine tuning hook...')
-        model = network.fineTuneHook(model)
+        -- allow user to fine tune model (we need to do this *before* loading weights)
+        if network.fineTuneHook then
+            logmessage.display(0,'Calling user-defined fine tuning hook...')
+            model = network.fineTuneHook(model)
+        end
+        -- load parameters from snapshot
+        local weights, gradients = model:getParameters()
+        logmessage.display(0, 'Loading ' .. weightsFile)
+        local savedWeights = torch.load(weightsFile)
+        weights:copy(savedWeights)
+    else
+        -- the full model was saved
+        assert(string.find(weightsFile, '_Model'))
+        model = torch.load(weightsFile)
+        network.model = model
     end
 
     if tensorType =='cuda' then
@@ -175,7 +157,7 @@ if ccn2 ~= nil then
     using_ccn2 = 'yes'
 end
 
-local model_filename = paths.concat(opt.load, snapshot_prefix .. '_' .. opt.epoch .. '_Model.t7')
+local weights_filename = opt.snapshot
 
 -- loads an image from specified path (file system or URL)
 local function loadImage(img_path)
@@ -314,7 +296,7 @@ if opt.testMany == 'yes' then
             if not network then
                 -- load model now - we need to wait after we have read at least one image to be able to
                 -- determine the shape of the input tensor and provide it to the user-defined function
-                network = loadNetwork(opt.networkDirectory, opt.network, class_labels, model_filename, opt.type, inputShape)
+                network = loadNetwork(opt.networkDirectory, opt.network, class_labels, weights_filename, opt.type, inputShape)
                 model = network.model
             end
             local input = preprocess(im, meanTensor, opt.croplen or network.croplen)
@@ -355,7 +337,7 @@ else
     local im = loadImage(opt.image)
     --print(im:size())
     local inputShape = getInputTensorShape(im, opt.croplen)
-    local network = loadNetwork(opt.networkDirectory, opt.network, class_labels, model_filename, opt.type, inputShape)
+    local network = loadNetwork(opt.networkDirectory, opt.network, class_labels, weights_filename, opt.type, inputShape)
     local model = network.model
     local input = preprocess(im, meanTensor, opt.croplen or network.croplen)
     --print(input:size())

@@ -380,15 +380,22 @@ end
 if opt.weights ~= '' then
     if paths.filep(opt.weights) then
         logmessage.display(0,'Loading weights from pretrained model - ' .. opt.weights)
-        local w, grad = model:getParameters()
-        w:copy(torch.load(opt.weights))
+        if (string.find(opt.weights, '_Weights')) then
+            local w, grad = model:getParameters()
+            w:copy(torch.load(opt.weights))
+        else
+            -- the full model was saved
+            assert(string.find(opt.weights, '_Model'))
+            model = torch.load(opt.weights)
+            network.model = model
+        end
     else
         logmessage.display(2,'Weight file for pretrained model not found: ' .. opt.weights)
         os.exit(-1)
     end
 end
 
--- allow user to fine tune model
+-- allow user to fine tune model (this needs to be done *after* we have loaded the snapshot)
 if network.fineTuneHook then
     logmessage.display(0,'Calling user-defined fine tuning hook...')
     model = network.fineTuneHook(model)
@@ -584,44 +591,6 @@ logmessage.display(0,'While logging, epoch value will be rounded to ' .. epoch_r
 
 logmessage.display(0,'Model weights will be saved as ' .. snapshot_prefix .. '_<EPOCH>_Model.t7')
 
---[[ -- NOTE: uncomment this block when "crash recovery" feature was implemented
-logmessage.display(0,'model, lrpolicy, optim state and random number states will be saved for recovery from crash')
-logmessage.display(0,'model will be saved as ' .. snapshot_prefix .. '_<EPOCH>_model.t7')
-logmessage.display(0,'optim state will be saved as optimState_<EPOCH>.t7')
-logmessage.display(0,'random number state will be saved as randomState_<EPOCH>.t7')
-logmessage.display(0,'LRPolicy state will be saved as lrpolicy_<EPOCH>.t7')
---]]
-
--- NOTE: currently this routine wasn't used in DIGITS.
--- This routine takes backup of model, optim state, LRPolicy and random number state
-local function backupforrecovery(backup_epoch)
-    -- save model
-    local filename = paths.concat(opt.save, snapshot_prefix .. '_' .. backup_epoch .. '_model.t7')
-    logmessage.display(0,'Saving model to ' .. filename)
-    utils.cleanupModel(model)
-    torch.save(filename, model)
-    logmessage.display(0,'Model saved - ' .. filename)
-
-    --save optim state
-    filename = paths.concat(opt.save, 'optimState_' .. backup_epoch .. '.t7')
-    logmessage.display(0,'optim state saving to ' .. filename)
-    torch.save(filename, optimState)
-    logmessage.display(0,'optim state saved - ' .. filename)
-
-    --save random number state
-    filename = paths.concat(opt.save, 'randomState_' .. backup_epoch .. '.t7')
-    logmessage.display(0,'random number state saving to ' .. filename)
-    torch.save(filename, torch.getRNGState())
-    logmessage.display(0,'random number state saved - ' .. filename)
-
-    --save lrPolicy state
-    filename = paths.concat(opt.save, 'lrpolicy_' .. backup_epoch .. '.t7')
-    logmessage.display(0,'lrpolicy state saving to ' .. filename)
-    torch.save(filename, optimizer.lrPolicy)
-    logmessage.display(0,'lrpolicy state saved - ' .. filename)
-end
-
-
 local function TableToArray(t)
     local arr = {}
     for k,v in pairs(t) do table.insert(arr,v) end
@@ -800,9 +769,18 @@ local function Train(epoch, dataLoader)
 
             if current_epoch >= next_snapshot_save then
                 -- save weights
-                local filename = paths.concat(opt.save, snapshot_prefix .. '_' .. current_epoch .. '_Model.t7')
+                local filename
+                local modelObjectToSave
+                if model.clearState then
+                    filename = paths.concat(opt.save, snapshot_prefix .. '_' .. current_epoch .. '_Model.t7')
+                    modelObjectToSave = model:clearState()
+                else
+                    -- this version of Torch doesn't support clearing the model state => save only the weights
+                    filename = paths.concat(opt.save, snapshot_prefix .. '_' .. current_epoch .. '_Weights.t7')
+                    modelObjectToSave = Weights
+                end
                 logmessage.display(0,'Snapshotting to ' .. filename)
-                torch.save(filename, model:clearState())
+                torch.save(filename, modelObjectToSave)
                 logmessage.display(0,'Snapshot saved - ' .. filename)
 
                 next_snapshot_save = (utils.round(current_epoch/opt.snapshotInterval) + 1) * opt.snapshotInterval -- To find next nearest epoch value that exactly divisible by opt.snapshotInterval
@@ -851,9 +829,18 @@ end
 
 -- if required, save snapshot at the end
 if opt.epoch > last_snapshot_save_epoch then
-    local filename = paths.concat(opt.save, snapshot_prefix .. '_' .. opt.epoch .. '_Model.t7')
+    local filename
+    local modelObjectToSave
+    if model.clearState then
+        filename = paths.concat(opt.save, snapshot_prefix .. '_' .. opt.epoch .. '_Model.t7')
+        modelObjectToSave = model:clearState()
+    else
+    --stepvalues-- this version of Torch doesn't support clearing the model state => save only the weights
+        filename = paths.concat(opt.save, snapshot_prefix .. '_' .. opt.epoch .. '_Weights.t7')
+        modelObjectToSave = Weights
+    end
     logmessage.display(0,'Snapshotting to ' .. filename)
-    torch.save(filename, model:clearState())
+    torch.save(filename, modelObjectToSave)
     logmessage.display(0,'Snapshot saved - ' .. filename)
 end
 
