@@ -467,7 +467,7 @@ class TorchTrainTask(TrainTask):
 
         for filename in os.listdir(snapshot_dir):
             # find models
-            match = re.match(r'%s_(\d+)\.?(\d*)_Weights\.t7' % os.path.basename(self.snapshot_prefix), filename)
+            match = re.match(r'%s_(\d+)\.?(\d*)_Model\.t7' % os.path.basename(self.snapshot_prefix), filename)
             if match:
                 epoch = 0
                 if match.group(2) == '':
@@ -491,7 +491,6 @@ class TorchTrainTask(TrainTask):
 
     @override
     def infer_one(self, data, snapshot_epoch=None, layers=None, resize_override=None, gpu=None):
-        print('infer_one(..,resize_override='+resize_override+')')
         if isinstance(self.dataset, ImageClassificationDatasetJob) or isinstance(self.dataset, dataset.GenericImageDatasetJob):
             return self.infer_one_image(data,
                     snapshot_epoch=snapshot_epoch,

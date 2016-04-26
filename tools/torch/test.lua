@@ -98,7 +98,7 @@ if opt.epoch == -1 then
     for file in lfs.dir(dir_name) do
         file_name = paths.concat(dir_name,file)
         if lfs.attributes(file_name,"mode") == "file" then
-            if string.match(file, snapshot_prefix .. '_.*_Weights[.]t7') then
+            if string.match(file, snapshot_prefix .. '_.*_Model[.]t7') then
                 parts=string.split(file,"_")
                 value = tonumber(parts[#parts-1])
                 if (opt.epoch < value) then
@@ -130,18 +130,19 @@ end
 -- * reload weights from snapshot
 -- * move model to CUDA or FLOAT
 -- * adjust last layer to match number of labels (for classification networks)
-function loadNetwork(dir, name, labels, weightsFile, tensorType, inputTensorShape)
+function loadNetwork(dir, name, labels, modelFile, tensorType, inputTensorShape)
     package.path = paths.concat(dir, "?.lua") ..";".. package.path
 
     logmessage.display(0,'Loading network definition from ' .. paths.concat(dir, name))
     local parameters = {
         ngpus = (tensorType =='cuda') and 1 or 0,
         nclasses = (labels ~= nil) and #labels or nil,
-        inputShape = inputTensorShape,
-        testing = true,
+        inputShape = inputTensorShape
     }
     local network = require (name)(parameters)
-    local model = network.model
+    logmessage.display(0, 'Loading ' .. modelFile)
+    local model = torch.load(modelFile)
+    network.model = model
 
     -- allow user to fine tune model
     if network.fineTuneHook then
@@ -149,22 +150,13 @@ function loadNetwork(dir, name, labels, weightsFile, tensorType, inputTensorShap
         model = network.fineTuneHook(model)
     end
 
-    -- load parameters from snapshot
-    local weights, gradients = model:getParameters()
-
-    logmessage.display(0, 'Loading ' .. weightsFile)
-    local savedWeights = torch.load(weightsFile)
-    weights:copy(savedWeights)
-
     if tensorType =='cuda' then
         model:cuda()
     else
         model:float()
     end
-
     -- as we want to classify, let's disable dropouts by enabling evaluation mode
     model:evaluate()
-
     return network
 end
 
@@ -183,7 +175,7 @@ if ccn2 ~= nil then
     using_ccn2 = 'yes'
 end
 
-local weights_filename = paths.concat(opt.load, snapshot_prefix .. '_' .. opt.epoch .. '_Weights.t7')
+local model_filename = paths.concat(opt.load, snapshot_prefix .. '_' .. opt.epoch .. '_Model.t7')
 
 -- loads an image from specified path (file system or URL)
 local function loadImage(img_path)
@@ -322,7 +314,7 @@ if opt.testMany == 'yes' then
             if not network then
                 -- load model now - we need to wait after we have read at least one image to be able to
                 -- determine the shape of the input tensor and provide it to the user-defined function
-                network = loadNetwork(opt.networkDirectory, opt.network, class_labels, weights_filename, opt.type, inputShape)
+                network = loadNetwork(opt.networkDirectory, opt.network, class_labels, model_filename, opt.type, inputShape)
                 model = network.model
             end
             local input = preprocess(im, meanTensor, opt.croplen or network.croplen)
@@ -363,7 +355,7 @@ else
     local im = loadImage(opt.image)
     --print(im:size())
     local inputShape = getInputTensorShape(im, opt.croplen)
-    local network = loadNetwork(opt.networkDirectory, opt.network, class_labels, weights_filename, opt.type, inputShape)
+    local network = loadNetwork(opt.networkDirectory, opt.network, class_labels, model_filename, opt.type, inputShape)
     local model = network.model
     local input = preprocess(im, meanTensor, opt.croplen or network.croplen)
     --print(input:size())

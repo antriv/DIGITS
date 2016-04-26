@@ -285,8 +285,7 @@ assert(type(network_func)=='function', "Network definition should return a Lua f
 local parameters = {
         nclasses = (classes ~= nil) and #classes or nil,
         ngpus = nGpus,
-        inputShape = inputTensorShape,
-        testing = false,
+        inputShape = inputTensorShape
     }
 network = network_func(parameters)
 local model = network.model
@@ -583,7 +582,7 @@ while tmp_batchsize <= trainSize do
 end
 logmessage.display(0,'While logging, epoch value will be rounded to ' .. epoch_round .. ' significant digits')
 
-logmessage.display(0,'Model weights will be saved as ' .. snapshot_prefix .. '_<EPOCH>_Weights.t7')
+logmessage.display(0,'Model weights will be saved as ' .. snapshot_prefix .. '_<EPOCH>_Model.t7')
 
 --[[ -- NOTE: uncomment this block when "crash recovery" feature was implemented
 logmessage.display(0,'model, lrpolicy, optim state and random number states will be saved for recovery from crash')
@@ -801,9 +800,9 @@ local function Train(epoch, dataLoader)
 
             if current_epoch >= next_snapshot_save then
                 -- save weights
-                local filename = paths.concat(opt.save, snapshot_prefix .. '_' .. current_epoch .. '_Weights.t7')
+                local filename = paths.concat(opt.save, snapshot_prefix .. '_' .. current_epoch .. '_Model.t7')
                 logmessage.display(0,'Snapshotting to ' .. filename)
-                torch.save(filename, Weights)
+                torch.save(filename, model:clearState())
                 logmessage.display(0,'Snapshot saved - ' .. filename)
 
                 next_snapshot_save = (utils.round(current_epoch/opt.snapshotInterval) + 1) * opt.snapshotInterval -- To find next nearest epoch value that exactly divisible by opt.snapshotInterval
@@ -815,12 +814,8 @@ local function Train(epoch, dataLoader)
             -- failed to read from database (possibly due to disabled thread)
             dataLoaderIdx = dataLoaderIdx - data.batchSize
         end
-
     end
-    
-
     --xlua.progress(trainSize, trainSize)
-
 end
 
 ------------------------------
@@ -850,14 +845,15 @@ end
 
 -- if required, perform validation at the end
 if opt.validation ~= '' and opt.epoch > last_validation_epoch then
+    logmessage.display(0,'Running a final validation..')
     Validation(model, loss, opt.epoch, valDataLoader, valSize, valBatchSize, valConfusion, labelFunction)
 end
 
 -- if required, save snapshot at the end
 if opt.epoch > last_snapshot_save_epoch then
-    local filename = paths.concat(opt.save, snapshot_prefix .. '_' .. opt.epoch .. '_Weights.t7')
+    local filename = paths.concat(opt.save, snapshot_prefix .. '_' .. opt.epoch .. '_Model.t7')
     logmessage.display(0,'Snapshotting to ' .. filename)
-    torch.save(filename, Weights)
+    torch.save(filename, model:clearState())
     logmessage.display(0,'Snapshot saved - ' .. filename)
 end
 
