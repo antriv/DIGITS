@@ -202,7 +202,11 @@ class BaseViewsTestWithDataset(BaseViewsTest,
             if rv.status_code != 200:
                 print json.loads(rv.data)
                 raise RuntimeError('Model creation failed with %s' % rv.status_code)
-            return json.loads(rv.data)['id']
+            data = json.loads(rv.data)
+            if 'jobs' in data.keys():
+                return [j['id'] for j in data['jobs']]
+            else:
+                return data['id']
 
         # expect a redirect
         if not 300 <= rv.status_code <= 310:
@@ -566,46 +570,47 @@ class BaseTestCreated(BaseViewsTestWithModel):
         assert status == 200, 'failed with %s' % status
 
     def test_classify_one(self):
-        # carry out one inference test per category in dataset
-        for category in self.imageset_paths.keys():
-            image_path = self.imageset_paths[category][0]
-            image_path = os.path.join(self.imageset_folder, image_path)
-            with open(image_path,'rb') as infile:
-                # StringIO wrapping is needed to simulate POST file upload.
-                image_upload = (StringIO(infile.read()), 'image.png')
+        # test first image in first category
+        category = self.imageset_paths.keys()[0]
+        image_path = self.imageset_paths[category][0]
+        image_path = os.path.join(self.imageset_folder, image_path)
+        with open(image_path,'rb') as infile:
+            # StringIO wrapping is needed to simulate POST file upload.
+            image_upload = (StringIO(infile.read()), 'image.png')
 
-            rv = self.app.post(
-                    '/models/images/classification/classify_one?job_id=%s' % self.model_id,
-                    data = {
-                        'image_file': image_upload,
-                        'show_visualizations': 'y',
-                        }
-                    )
-            s = BeautifulSoup(rv.data, 'html.parser')
-            body = s.select('body')
-            assert rv.status_code == 200, 'POST failed with %s\n\n%s' % (rv.status_code, body)
-            # gets an array of arrays [[confidence, label],...]
-            predictions = [p.get_text().split() for p in s.select('ul.list-group li')]
-            assert predictions[0][1] == category, 'image misclassified'
+        rv = self.app.post(
+                '/models/images/classification/classify_one?job_id=%s' % self.model_id,
+                data = {
+                    'image_file': image_upload,
+                    'show_visualizations': 'y',
+                    }
+                )
+        s = BeautifulSoup(rv.data, 'html.parser')
+        body = s.select('body')
+        assert rv.status_code == 200, 'POST failed with %s\n\n%s' % (rv.status_code, body)
+        # gets an array of arrays [[confidence, label],...]
+        predictions = [p.get_text().split() for p in s.select('ul.list-group li')]
+        assert predictions[0][1] == category, 'image misclassified'
 
     def test_classify_one_json(self):
-        for category in self.imageset_paths.keys():
-            image_path = self.imageset_paths[category][0]
-            image_path = os.path.join(self.imageset_folder, image_path)
-            with open(image_path,'rb') as infile:
-                # StringIO wrapping is needed to simulate POST file upload.
-                image_upload = (StringIO(infile.read()), 'image.png')
+        # test last image in last category
+        category = self.imageset_paths.keys()[-1]
+        image_path = self.imageset_paths[category][-1]
+        image_path = os.path.join(self.imageset_folder, image_path)
+        with open(image_path,'rb') as infile:
+            # StringIO wrapping is needed to simulate POST file upload.
+            image_upload = (StringIO(infile.read()), 'image.png')
 
-            rv = self.app.post(
-                    '/models/images/classification/classify_one.json?job_id=%s' % self.model_id,
-                    data = {
-                        'image_file': image_upload,
-                        'show_visualizations': 'y',
-                        }
-                    )
-            assert rv.status_code == 200, 'POST failed with %s' % rv.status_code
-            data = json.loads(rv.data)
-            assert data['predictions'][0][0] == category, 'image misclassified'
+        rv = self.app.post(
+                '/models/images/classification/classify_one.json?job_id=%s' % self.model_id,
+                data = {
+                    'image_file': image_upload,
+                    'show_visualizations': 'y',
+                    }
+                )
+        assert rv.status_code == 200, 'POST failed with %s' % rv.status_code
+        data = json.loads(rv.data)
+        assert data['predictions'][0][0] == category, 'image misclassified'
 
     def test_classify_many(self):
         textfile_images = ''
@@ -691,6 +696,12 @@ class BaseTestCreated(BaseViewsTestWithModel):
         assert rv.status_code == 200, 'POST failed with %s' % rv.status_code
         data = json.loads(rv.data)
         assert 'classifications' in data, 'invalid response'
+        # verify classification of first image in each category
+        for category in self.imageset_paths.keys():
+            image_path = self.imageset_paths[category][0]
+            image_path = os.path.join(self.imageset_folder, image_path)
+            prediction = data['classifications'][image_path][0][0]
+            assert prediction == category, 'image misclassified- predicted %s - expected %s' % (prediction, category)
 
     def test_top_n(self):
         textfile_images = ''
@@ -901,10 +912,7 @@ class TestCaffeViews(BaseTestViews):
 class TestCaffeCreation(BaseTestCreation):
     FRAMEWORK = 'caffe'
 
-class TestCaffeCreated(BaseTestCreated):
-    FRAMEWORK = 'caffe'
-
-class TestCaffeCreatedMoreNumOutput(BaseTestCreated):
+class TestCaffeCreatedWideMoreNumOutput(BaseTestCreatedWide):
     FRAMEWORK = 'caffe'
 
     CAFFE_NETWORK = \
@@ -946,19 +954,13 @@ layer {
 class TestCaffeDatasetModelInteractions(BaseTestDatasetModelInteractions):
     FRAMEWORK = 'caffe'
 
-class TestCaffeCreatedWide(BaseTestCreatedWide):
-    FRAMEWORK = 'caffe'
-
-class TestCaffeCreatedTall(BaseTestCreatedTall):
-    FRAMEWORK = 'caffe'
-
 class TestCaffeCreatedCropInForm(BaseTestCreatedCropInForm):
     FRAMEWORK = 'caffe'
 
 class TestCaffeCreatedCropInNetwork(BaseTestCreatedCropInNetwork):
     FRAMEWORK = 'caffe'
 
-class TestCaffeCreatedMultiStepLR(BaseTestCreated):
+class TestCaffeCreatedTallMultiStepLR(BaseTestCreatedTall):
     FRAMEWORK = 'caffe'
     LR_POLICY = 'multistep'
     LR_MULTISTEP_VALUES = '50,75,90'
@@ -969,31 +971,25 @@ class TestTorchViews(BaseTestViews):
 class TestTorchCreation(BaseTestCreation):
     FRAMEWORK = 'torch'
 
-class TestTorchCreated(BaseTestCreated):
-    FRAMEWORK = 'torch'
-
-class TestTorchCreatedUnencoded(BaseTestCreated):
+class TestTorchCreatedUnencodedShuffle(BaseTestCreated):
     FRAMEWORK = 'torch'
     ENCODING = 'none'
-
-class TestTorchCreatedShuffle(TestTorchCreated):
     SHUFFLE = True
 
-class TestTorchCreatedHdf5(TestTorchCreated):
+class TestTorchCreatedHdf5(BaseTestCreated):
+    FRAMEWORK = 'torch'
     BACKEND = 'hdf5'
 
-class TestTorchCreatedHdf5Shuffle(TestTorchCreatedHdf5):
+class TestTorchCreatedTallHdf5Shuffle(BaseTestCreatedTall):
+    FRAMEWORK = 'torch'
+    BACKEND = 'hdf5'
     SHUFFLE = True
 
 class TestTorchDatasetModelInteractions(BaseTestDatasetModelInteractions):
     FRAMEWORK = 'torch'
 
-class TestTorchCreatedMultiStepLR(BaseTestCreated):
-    FRAMEWORK = 'torch'
-    LR_POLICY = 'multistep'
-    LR_MULTISTEP_VALUES = '50,75,90'
-
-class TestCaffeLeNet(TestCaffeCreated):
+class TestCaffeLeNet(BaseTestCreated):
+    FRAMEWORK = 'caffe'
     IMAGE_WIDTH = 28
     IMAGE_HEIGHT = 28
 
@@ -1009,13 +1005,13 @@ class TestTorchCreatedCropInForm(BaseTestCreatedCropInForm):
 class TestTorchCreatedCropInNetwork(BaseTestCreatedCropInNetwork):
     FRAMEWORK = 'torch'
 
-class TestTorchCreatedWide(BaseTestCreatedWide):
+class TestTorchCreatedWideMultiStepLR(BaseTestCreatedWide):
     FRAMEWORK = 'torch'
+    LR_POLICY = 'multistep'
+    LR_MULTISTEP_VALUES = '50,75,90'
 
-class TestTorchCreatedTall(BaseTestCreatedTall):
+class TestTorchLeNet(BaseTestCreated):
     FRAMEWORK = 'torch'
-
-class TestTorchLeNet(TestTorchCreated):
     IMAGE_WIDTH = 28
     IMAGE_HEIGHT = 28
     TRAIN_EPOCHS = 20
@@ -1032,13 +1028,8 @@ class TestTorchLeNet(TestTorchCreated):
                 'standard-networks', 'torch', 'lenet.lua')
             ).read()
 
-class TestTorchLeNetShuffle(TestTorchLeNet):
-    SHUFFLE = True
-
-class TestTorchLeNetHdf5(TestTorchLeNet):
+class TestTorchLeNetHdf5Shuffle(TestTorchLeNet):
     BACKEND = 'hdf5'
-
-class TestTorchLeNetHdf5Shuffle(TestTorchLeNetHdf5):
     SHUFFLE = True
 
 class TestPythonLayer(BaseViewsTestWithDataset):
@@ -1136,3 +1127,15 @@ class PythonLayer(caffe.Layer):
         assert rv.status_code == 200, 'json load failed with %s' % rv.status_code
         content = json.loads(rv.data)
         assert len(content['snapshots']), 'should have at least snapshot'
+
+class TestSweepCreation(BaseViewsTestWithDataset):
+    FRAMEWORK = 'caffe'
+    """
+    Model creation tests
+    """
+    def test_sweep(self):
+        job_ids = self.create_model(json=True, learning_rate='[0.01, 0.02]', batch_size='[8, 10]')
+        for job_id in job_ids:
+            assert self.model_wait_completion(job_id) == 'Done', 'create failed'
+            assert self.delete_model(job_id) == 200, 'delete failed'
+            assert not self.model_exists(job_id), 'model exists after delete'

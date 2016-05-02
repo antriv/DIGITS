@@ -12,7 +12,7 @@ require 'logmessage'
 local ffi = require 'ffi'
 local tds = check_require 'tds'
 
-local tds = check_require 'tds'
+local tdsIsInstalled, tds = pcall(function() return check_require 'tds' end)
 
 -- enable shared serialization to speed up Tensor passing between threads
 threads.Threads.serialization('threads.sharedserialize')
@@ -409,7 +409,14 @@ end
 
 -- Derived class method lmdb_getKeys
 function DBSource:lmdb_getKeys ()
-    local Keys = tds.Vec()
+    local Keys
+    if tdsIsInstalled then
+        -- use tds.Vec() to allocate memory outside of Lua heap
+        Keys = tds.Vec()
+    else
+        -- if tds is not installed, use regular table (and Lua memory allocator)
+        Keys = {}
+    end
     local i=0
     local key=nil
     for k,v in all_keys(self.lmdb_data.c,nil,self.lightningmdb.MDB_NEXT) do
