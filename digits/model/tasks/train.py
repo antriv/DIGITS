@@ -191,15 +191,11 @@ class TrainTask(Task):
             try:
                 ps = psutil.Process(self.p.pid) # 'self.p' is the system call object for the training object
                 data_cpu['mem_uss'] = ps.memory_full_info().uss
-                data_cpu['mem_uss_pct'] =  100*data_cpu['mem_uss']/psutil.virtual_memory().total
                 data_cpu['cpu'] = ps.cpu_percent(interval=1)
                 if platform.system() == 'Linux': # Disk IO Info
-                    #Only works for Linux
                     data_cpu['io_rb'] = ps.io_counters().read_bytes
                     data_cpu['io_wb'] = ps.io_counters().write_bytes
-                    #data_cpu['io_rc'] = ps.io_counters().read_count
-                    #data_cpu['io_wc'] = ps.io_counters().write_count
-
+                data_cpu['mem_uss_pct'] =  100*data_cpu['mem_uss']/psutil.virtual_memory().total
             except: 
                 pass
 
