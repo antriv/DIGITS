@@ -21,6 +21,8 @@ require 'logmessage'
 local utils = require 'utils'
 ----------------------------------------------------------------------
 
+--  -g,--mirror (default no) If this option is 'yes', then some of the images are randomly mirrored
+
 opt = lapp[[
 Usage details:
 -a,--threads            (default 8)              number of threads
@@ -28,7 +30,6 @@ Usage details:
 -c,--learningRateDecay (default 1e-6) learning rate decay (in # samples)
 -e,--epoch (default 1) number of epochs to train -1 for unbounded
 -f,--shuffle (default no) shuffle records before train
--g,--mirror (default no) If this option is 'yes', then some of the images are randomly mirrored
 -i,--interval (default 1) number of train epochs to complete, to perform one validation
 -k,--crop (default no) If this option is 'yes', all the images are randomly cropped into square image. And croplength is provided as --croplen parameter
 -l,--croplen (default 0) crop length. This is required parameter when crop option is provided
@@ -41,6 +42,11 @@ Usage details:
 -t,--train (default '') location in which train db exists. This parameter may be omitted only if visualizeModel is 'yes'.
 -v,--validation (default '') location in which validation db exists.
 -w,--weightDecay (default 1e-4) L2 penalty on the weights
+
+--augFlip (default none) options {none, fliplr, flipud, fliplrud}
+--augQuadRot (default none) options {none, rot90, rot180, rotall}
+--augRot(default 0) arbitrary rotation (input in degrees ±)
+--augscale (default 0.0) Random scaling ± this parameter
 
 --train_labels (default '') location in which train labels db exists. Optional, use this if train db does not contain target labels.
 --validation_labels (default '') location in which validation labels db exists. Optional, use this if validation db does not contain target labels.
@@ -96,9 +102,10 @@ COMPUTE_TRAIN_ACCURACY = false
 
 -- Convert boolean options
 opt.crop = opt.crop == 'yes' or false
-opt.mirror = opt.mirror == 'yes' or false
 opt.shuffle = opt.shuffle == 'yes' or false
 opt.visualizeModel = opt.visualizeModel == 'yes' or false
+
+logmessage.display(0, 'opt.subtractMean:' .. opt.subtractMean .. ' opt.augFlip:'.. opt.augFlip ..' opt.augQuadRot:' .. opt.augQuadRot .. ' opt.augRot:' .. opt.augRot)
 
 -- Set the seed of the random number generator to the given number.
 if opt.seed ~= '' then
@@ -215,13 +222,16 @@ logmessage.display(0,'creating data readers')
 local trainDataLoader, trainSize, inputTensorShape
 local valDataLoader, valSize
 
+local num_threads_data_loader = 4
+
 if opt.train ~= '' then
     -- create data loader for training dataset
     trainDataLoader = DataLoader:new(
-            4, -- num threads
+            num_threads_data_loader, -- num threads
             package.path,
             opt.dbbackend, opt.train, opt.train_labels,
-            opt.mirror, meanTensor,
+            --opt.mirror, 
+            meanTensor,
             true, -- train
             opt.shuffle,
             classes ~= nil -- whether this is a classification task
@@ -232,10 +242,10 @@ if opt.train ~= '' then
     if opt.validation ~= '' then
         local shape
         valDataLoader = DataLoader:new(
-                4, -- num threads
+                num_threads_data_loader, -- num threads
                 package.path,
                 opt.dbbackend, opt.validation, opt.validation_labels,
-                false, -- no need to do random mirrorring
+                --false, -- no need to do random mirrorring
                 meanTensor,
                 false, -- train
                 false, -- shuffle
@@ -275,7 +285,7 @@ assert(type(network_func)=='function', "Network definition should return a Lua f
 local parameters = {
         nclasses = (classes ~= nil) and #classes or nil,
         ngpus = nGpus,
-        inputShape = inputTensorShape,
+        inputShape = inputTensorShape
     }
 network = network_func(parameters)
 local model = network.model
@@ -317,9 +327,9 @@ if opt.visualizeModel then
     os.exit(-1)
 end
 
-if opt.mirror then
-    logmessage.display(0,'mirror option was selected, so during training for some of the random images, mirror view will be considered instead of original image view')
-end
+--if opt.mirror then
+--    logmessage.display(0,'mirror option was selected, so during training for some of the random images, mirror view will be considered instead of original image view')
+--end
 
 -- NOTE: currently randomState option wasn't used in DIGITS. This option was provided to be used from command line, if required.
 -- load random number state from backup
@@ -370,15 +380,22 @@ end
 if opt.weights ~= '' then
     if paths.filep(opt.weights) then
         logmessage.display(0,'Loading weights from pretrained model - ' .. opt.weights)
-        local w, grad = model:getParameters()
-        w:copy(torch.load(opt.weights))
+        if (string.find(opt.weights, '_Weights')) then
+            local w, grad = model:getParameters()
+            w:copy(torch.load(opt.weights))
+        else
+            -- the full model was saved
+            assert(string.find(opt.weights, '_Model'))
+            model = torch.load(opt.weights)
+            network.model = model
+        end
     else
         logmessage.display(2,'Weight file for pretrained model not found: ' .. opt.weights)
         os.exit(-1)
     end
 end
 
--- allow user to fine tune model
+-- allow user to fine tune model (this needs to be done *after* we have loaded the snapshot)
 if network.fineTuneHook then
     logmessage.display(0,'Calling user-defined fine tuning hook...')
     model = network.fineTuneHook(model)
@@ -408,6 +425,18 @@ if opt.crop and inputTensorShape then
         valDataLoader:setCropLen(opt.croplen)
     end
 end
+
+-- Augmentation parameters
+trainDataLoader:setDataAugmentation(opt.augFlip, opt.augQuadRot, opt.augscale, opt.augRot)
+-- Note: no data augmentation for the validation set!
+--if valDataLoader then
+--    valDataLoader:setDataAugmentation(opt.augFlip, opt.augQuadRot, opt.augscale, opt.augRot)
+--end
+
+
+
+
+
 
 --modifying total sizes of train and validation dbs to be the exact multiple of 32, when cc2 is used
 if ccn2 ~= nil then
@@ -560,43 +589,12 @@ while tmp_batchsize <= trainSize do
 end
 logmessage.display(0,'While logging, epoch value will be rounded to ' .. epoch_round .. ' significant digits')
 
-logmessage.display(0,'Model weights will be saved as ' .. snapshot_prefix .. '_<EPOCH>_Weights.t7')
+logmessage.display(0,'Model weights will be saved as ' .. snapshot_prefix .. '_<EPOCH>_Model.t7')
 
---[[ -- NOTE: uncomment this block when "crash recovery" feature was implemented
-logmessage.display(0,'model, lrpolicy, optim state and random number states will be saved for recovery from crash')
-logmessage.display(0,'model will be saved as ' .. snapshot_prefix .. '_<EPOCH>_model.t7')
-logmessage.display(0,'optim state will be saved as optimState_<EPOCH>.t7')
-logmessage.display(0,'random number state will be saved as randomState_<EPOCH>.t7')
-logmessage.display(0,'LRPolicy state will be saved as lrpolicy_<EPOCH>.t7')
---]]
-
--- NOTE: currently this routine wasn't used in DIGITS.
--- This routine takes backup of model, optim state, LRPolicy and random number state
-local function backupforrecovery(backup_epoch)
-    -- save model
-    local filename = paths.concat(opt.save, snapshot_prefix .. '_' .. backup_epoch .. '_model.t7')
-    logmessage.display(0,'Saving model to ' .. filename)
-    utils.cleanupModel(model)
-    torch.save(filename, model)
-    logmessage.display(0,'Model saved - ' .. filename)
-
-    --save optim state
-    filename = paths.concat(opt.save, 'optimState_' .. backup_epoch .. '.t7')
-    logmessage.display(0,'optim state saving to ' .. filename)
-    torch.save(filename, optimState)
-    logmessage.display(0,'optim state saved - ' .. filename)
-
-    --save random number state
-    filename = paths.concat(opt.save, 'randomState_' .. backup_epoch .. '.t7')
-    logmessage.display(0,'random number state saving to ' .. filename)
-    torch.save(filename, torch.getRNGState())
-    logmessage.display(0,'random number state saved - ' .. filename)
-
-    --save lrPolicy state
-    filename = paths.concat(opt.save, 'lrpolicy_' .. backup_epoch .. '.t7')
-    logmessage.display(0,'lrpolicy state saving to ' .. filename)
-    torch.save(filename, optimizer.lrPolicy)
-    logmessage.display(0,'lrpolicy state saved - ' .. filename)
+local function TableToArray(t)
+    local arr = {}
+    for k,v in pairs(t) do table.insert(arr,v) end
+    return arr
 end
 
 
@@ -667,7 +665,12 @@ local function Validation(model, loss, epoch, data_loader, data_size, batch_size
     local avg_loss = batch_count > 0 and loss_sum / batch_count or 0
     if confusion ~= nil then
         confusion:updateValids()
-        logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss .. ', accuracy = ' .. confusion.totalValid)
+        logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss .. ', accuracy = ' .. confusion.totalValid )
+
+        -- Only output confusion matrices within a given size, or it gets too big to parse and/or handle.
+        if #confusion.classes < 101 then
+            logmessage.display(0, 'Validation ConfusionMatrix (epoch ' .. epoch .. '): ' .. utils.dataToJson(confusion.mat))
+        end
     else
         logmessage.display(0, 'Validation (epoch ' .. epoch .. '): loss = ' .. avg_loss)
     end
@@ -691,7 +694,6 @@ local function Train(epoch, dataLoader)
 
     local t = 1
     while t <= trainSize do
-
         while dataLoader:acceptsjob() do
             local dataBatchSize = math.min(trainSize-dataLoaderIdx+1,trainBatchSize)
             if dataBatchSize > 0 then
@@ -767,9 +769,18 @@ local function Train(epoch, dataLoader)
 
             if current_epoch >= next_snapshot_save then
                 -- save weights
-                local filename = paths.concat(opt.save, snapshot_prefix .. '_' .. current_epoch .. '_Weights.t7')
+                local filename
+                local modelObjectToSave
+                if model.clearState then
+                    filename = paths.concat(opt.save, snapshot_prefix .. '_' .. current_epoch .. '_Model.t7')
+                    modelObjectToSave = model:clearState()
+                else
+                    -- this version of Torch doesn't support clearing the model state => save only the weights
+                    filename = paths.concat(opt.save, snapshot_prefix .. '_' .. current_epoch .. '_Weights.t7')
+                    modelObjectToSave = Weights
+                end
                 logmessage.display(0,'Snapshotting to ' .. filename)
-                torch.save(filename, Weights)
+                torch.save(filename, modelObjectToSave)
                 logmessage.display(0,'Snapshot saved - ' .. filename)
 
                 next_snapshot_save = (utils.round(current_epoch/opt.snapshotInterval) + 1) * opt.snapshotInterval -- To find next nearest epoch value that exactly divisible by opt.snapshotInterval
@@ -781,11 +792,8 @@ local function Train(epoch, dataLoader)
             -- failed to read from database (possibly due to disabled thread)
             dataLoaderIdx = dataLoaderIdx - data.batchSize
         end
-
     end
-
     --xlua.progress(trainSize, trainSize)
-
 end
 
 ------------------------------
@@ -796,6 +804,7 @@ logmessage.display(0,'started training the model')
 
 -- run an initial validation before the first train epoch
 if opt.validation ~= '' then
+    logmessage.display(0,'Running initial validation before first train epoch..')
     Validation(model, loss, 0, valDataLoader, valSize, valBatchSize, valConfusion, labelFunction)
 end
 
@@ -807,7 +816,6 @@ while epoch<=opt.epoch do
     Train(epoch, trainDataLoader)
     if trainConfusion ~= nil then
         trainConfusion:updateValids()
-        --print(trainConfusion)
         ErrTrain = (1-trainConfusion.totalValid)
     end
     epoch = epoch+1
@@ -815,14 +823,24 @@ end
 
 -- if required, perform validation at the end
 if opt.validation ~= '' and opt.epoch > last_validation_epoch then
+    logmessage.display(0,'Running a final validation..')
     Validation(model, loss, opt.epoch, valDataLoader, valSize, valBatchSize, valConfusion, labelFunction)
 end
 
 -- if required, save snapshot at the end
 if opt.epoch > last_snapshot_save_epoch then
-    local filename = paths.concat(opt.save, snapshot_prefix .. '_' .. opt.epoch .. '_Weights.t7')
+    local filename
+    local modelObjectToSave
+    if model.clearState then
+        filename = paths.concat(opt.save, snapshot_prefix .. '_' .. opt.epoch .. '_Model.t7')
+        modelObjectToSave = model:clearState()
+    else
+    --stepvalues-- this version of Torch doesn't support clearing the model state => save only the weights
+        filename = paths.concat(opt.save, snapshot_prefix .. '_' .. opt.epoch .. '_Weights.t7')
+        modelObjectToSave = Weights
+    end
     logmessage.display(0,'Snapshotting to ' .. filename)
-    torch.save(filename, Weights)
+    torch.save(filename, modelObjectToSave)
     logmessage.display(0,'Snapshot saved - ' .. filename)
 end
 

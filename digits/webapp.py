@@ -30,6 +30,7 @@ app.jinja_env.filters['print_time_diff'] = utils.time_filters.print_time_diff
 app.jinja_env.filters['print_time_since'] = utils.time_filters.print_time_since
 app.jinja_env.filters['sizeof_fmt'] = utils.sizeof_fmt
 app.jinja_env.filters['has_permission'] = utils.auth.has_permission
+app.jinja_env.filters['get_data_from_title_array'] = utils.forms.get_data_from_title_array
 app.jinja_env.trim_blocks = True
 app.jinja_env.lstrip_blocks = True
 

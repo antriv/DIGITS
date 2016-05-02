@@ -258,6 +258,20 @@ class TorchTrainTask(TrainTask):
         if self.pretrained_model:
             args.append('--weights=%s' % self.path(self.pretrained_model))
 
+
+        # Augmentations
+        assert self.data_aug['flip'] in ['none', 'fliplr', 'flipud', 'fliplrud'], 'Bad or unknown flag "flip"'
+        args.append('--augFlip=%s' % self.data_aug['flip'])
+
+        assert self.data_aug['quad_rot'] in ['none', 'rot90', 'rot180', 'rotall'], 'Bad or unknown flag "quad_rot"'
+        args.append('--augQuadRot=%s' % self.data_aug['quad_rot'])
+
+        if self.data_aug['rot_use']:
+            args.append('--augRot=%s' % self.data_aug['rot'])
+        else:
+            args.append('--augRot=0')
+
+
         return args
 
     @override
@@ -301,7 +315,7 @@ class TorchTrainTask(TrainTask):
             lr = match.group(4)
             lr = float(lr)
             # epoch updates
-            self.send_progress_update(index)
+            self.send_progress_update(index) # this is just updating the completion percentage
 
             self.save_train_output('loss', 'SoftmaxWithLoss', l)
             self.save_train_output('learning_rate', 'LearningRate', lr)
@@ -328,6 +342,16 @@ class TorchTrainTask(TrainTask):
                     self.logger.debug('Network accuracy #%s: %s' % (index, a))
                     self.save_val_output('accuracy', 'Accuracy', a)
             return True
+
+        ## format of output of confusion matrix
+        match = re.match(r'Validation ConfusionMatrix \(epoch (\d+\.?\d*)\): (.*)', message, flags=re.IGNORECASE)
+        if match:
+            index = float(match.group(1))
+            self.logger.debug('Validation confusion matrix epoch #%s.' % (index))
+            self.save_val_output('confusion_matrix', 'ConfusionMatrix', eval(match.group(2)))
+            return True
+
+
 
         # snapshot saved
         if self.saving_snapshot:
@@ -443,7 +467,7 @@ class TorchTrainTask(TrainTask):
 
         for filename in os.listdir(snapshot_dir):
             # find models
-            match = re.match(r'%s_(\d+)\.?(\d*)_Weights\.t7' % os.path.basename(self.snapshot_prefix), filename)
+            match = re.match(r'%s_(\d+)\.?(\d*)(_Weights|_Model)\.t7' % os.path.basename(self.snapshot_prefix), filename)
             if match:
                 epoch = 0
                 if match.group(2) == '':
@@ -466,16 +490,17 @@ class TorchTrainTask(TrainTask):
         return None
 
     @override
-    def infer_one(self, data, snapshot_epoch=None, layers=None, gpu=None):
+    def infer_one(self, data, snapshot_epoch=None, layers=None, resize_override=None, gpu=None):
         if isinstance(self.dataset, ImageClassificationDatasetJob) or isinstance(self.dataset, dataset.GenericImageDatasetJob):
             return self.infer_one_image(data,
                     snapshot_epoch=snapshot_epoch,
                     layers=layers,
+                    resize_override=resize_override,
                     gpu=gpu,
                     )
         raise NotImplementedError('torch infer one')
 
-    def infer_one_image(self, image, snapshot_epoch=None, layers=None, gpu=None):
+    def infer_one_image(self, image, snapshot_epoch=None, layers=None, resize_override=None, gpu=None):
         """
         Classify an image
         Returns (predictions, visualizations)
@@ -505,14 +530,15 @@ class TorchTrainTask(TrainTask):
         else:
             torch_bin = os.path.join(config_value('torch_root'), 'bin', 'th')
 
+        file_to_load = self.get_snapshot(snapshot_epoch)
+
         args = [torch_bin,
                 os.path.join(os.path.dirname(os.path.dirname(digits.__file__)),'tools','torch','wrapper.lua'),
                 'test.lua',
                 '--image=%s' % temp_image_path,
                 '--network=%s' % self.model_file.split(".")[0],
                 '--networkDirectory=%s' % self.job_dir,
-                '--load=%s' % self.job_dir,
-                '--snapshotPrefix=%s' % self.snapshot_prefix,
+                '--snapshot=%s' % file_to_load,
                 ]
         if isinstance(self.dataset, ImageClassificationDatasetJob):
             args.append('--labels=%s' % self.dataset.path(self.dataset.labels_file))
@@ -523,8 +549,8 @@ class TorchTrainTask(TrainTask):
                 args.append('--mean=%s' % os.path.join(self.job_dir, constants.MEAN_FILE_IMAGE))
             args.append('--allPredictions=yes')
 
-        if snapshot_epoch:
-            args.append('--epoch=%d' % int(snapshot_epoch))
+        if resize_override:
+            args.append('--resize_override=yes')
 
         if self.use_mean == 'pixel':
             args.append('--subtractMean=pixel')
@@ -812,6 +838,8 @@ class TorchTrainTask(TrainTask):
             else:
                 torch_bin = os.path.join(config_value('torch_root'), 'bin', 'th')
 
+            file_to_load = self.get_snapshot(snapshot_epoch)
+
             args = [torch_bin,
                     os.path.join(os.path.dirname(os.path.dirname(digits.__file__)),'tools','torch','wrapper.lua'),
                     'test.lua',
@@ -821,8 +849,7 @@ class TorchTrainTask(TrainTask):
                     '--resizeMode=%s' % str(self.dataset.resize_mode),   # Here, we are using original images, so they will be resized in Torch code. This logic needs to be changed to eliminate the rework of resizing. Need to find a way to send python images array to Lua script efficiently
                     '--network=%s' % self.model_file.split(".")[0],
                     '--networkDirectory=%s' % self.job_dir,
-                    '--load=%s' % self.job_dir,
-                    '--snapshotPrefix=%s' % self.snapshot_prefix,
+                    '--snapshot=%s' % file_to_load,
                     ]
 
             if isinstance(self.dataset, ImageClassificationDatasetJob):
@@ -833,8 +860,6 @@ class TorchTrainTask(TrainTask):
                 if self.use_mean != 'none':
                     args.append('--mean=%s' % os.path.join(self.job_dir, constants.MEAN_FILE_IMAGE))
 
-            if snapshot_epoch:
-                args.append('--epoch=%d' % int(snapshot_epoch))
             if self.use_mean == 'pixel':
                 args.append('--subtractMean=pixel')
             elif self.use_mean == 'image':
@@ -939,3 +964,22 @@ class TorchTrainTask(TrainTask):
             desc = infile.read()
         return desc
 
+    def get_snapshot(self, epoch):
+        """
+        return snapshot file for specified epoch
+        """
+        file_to_load = None
+
+        if not epoch:
+            epoch = self.snapshots[-1][1]
+            file_to_load = self.snapshots[-1][0]
+        else:
+            for snapshot_file, snapshot_epoch in self.snapshots:
+                if snapshot_epoch == epoch:
+                    file_to_load = snapshot_file
+                    break
+        if file_to_load is None:
+            raise Exception('snapshot not found for epoch "%s"' % epoch)
+
+        return file_to_load
+    

@@ -271,3 +271,14 @@ class Job(StatusCls):
         Returns False if this job can be edited
         """
         return False
+
+    def parent_job(self):
+        """
+        Returns the list of the jobs on which the job
+        depends
+        """
+        return []
+
+
+
+

@@ -1,6 +1,5 @@
 {# Copyright (c) 2015-2016, NVIDIA CORPORATION.  All rights reserved. #}
-<h1>GPU Usage</h1>
-
+<h1>Hardware</h1>
 {% for info in data %}
 <h3>{{info.name}} (#{{info.index}})</h3>
 <dl>
@@ -21,3 +20,27 @@
     {% endif %}
 </dl>
 {% endfor %}
+{% if data_cpu %}
+<h3>CPU ({% if 'pid' in data_cpu %}#{{data_cpu.pid}}{% endif %})</h3>
+<dl>
+	<dt>CPU Utilization </dt>
+	
+	{% if 'cpu' in data_cpu %}
+	<dd>{{data_cpu.cpu}}%</dd>
+	{% endif %}
+	{% if 'mem_uss' in data_cpu %}
+	<dt>Memory</dt>
+	<dd>
+	    {{data_cpu.mem_uss|sizeof_fmt}} {% if 'mem_uss_pct' in data_cpu %} ({{data_cpu.mem_uss_pct|round(1)}}%) {% endif %}
+	</dd>
+	{% endif %}
+
+    {% if 'io_rb' in data_cpu %}
+    <dt>Disk IO Totals</dt>
+    <dd>
+        R/W : {{data_cpu.io_rb|sizeof_fmt}} / {{data_cpu.io_wb|sizeof_fmt}}
+    </dd>
+    {% endif %}
+
+</dl>
+{% endif %}

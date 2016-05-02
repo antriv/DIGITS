@@ -126,7 +126,7 @@ def resize_image(image, height, width,
     """
     if resize_mode is None:
         resize_mode = 'squash'
-    if resize_mode not in ['crop', 'squash', 'fill', 'half_crop']:
+    if resize_mode not in ['crop', 'squash', 'fill', 'half_crop', 'none']:
         raise ValueError('resize_mode "%s" not supported' % resize_mode)
 
     if channels not in [None, 1, 3]:
@@ -179,6 +179,10 @@ def resize_image(image, height, width,
     else:
         raise ValueError('resize_image() expected a PIL.Image.Image or a numpy.ndarray')
 
+    if resize_mode == 'none':
+        return image
+
+
     # No need to resize
     if image.shape[0] == height and image.shape[1] == width:
         return image
@@ -207,57 +211,56 @@ def resize_image(image, height, width,
         else:
             start = int(round((resize_height-height)/2.0))
             return image[start:start+height,:]
-    else:
-        if resize_mode == 'fill':
-            # resize to biggest of ratios (relatively smaller image), keeping aspect ratio
-            if width_ratio > height_ratio:
-                resize_width = width
-                resize_height = int(round(image.shape[0] / width_ratio))
-                if (height - resize_height) % 2 == 1:
-                    resize_height += 1
-            else:
-                resize_height = height
-                resize_width = int(round(image.shape[1] / height_ratio))
-                if (width - resize_width) % 2 == 1:
-                    resize_width += 1
-            image = scipy.misc.imresize(image, (resize_height, resize_width), interp=interp)
-        elif resize_mode == 'half_crop':
-            # resize to average ratio keeping aspect ratio
-            new_ratio = (width_ratio + height_ratio) / 2.0
-            resize_width = int(round(image.shape[1] / new_ratio))
-            resize_height = int(round(image.shape[0] / new_ratio))
-            if width_ratio > height_ratio and (height - resize_height) % 2 == 1:
-                resize_height += 1
-            elif width_ratio < height_ratio and (width - resize_width) % 2 == 1:
-                resize_width += 1
-            image = scipy.misc.imresize(image, (resize_height, resize_width), interp=interp)
-            # chop off ends of dimension that is still too long
-            if width_ratio > height_ratio:
-                start = int(round((resize_width-width)/2.0))
-                image = image[:,start:start+width]
-            else:
-                start = int(round((resize_height-height)/2.0))
-                image = image[start:start+height,:]
-        else:
-            raise Exception('unrecognized resize_mode "%s"' % resize_mode)
-
-        # fill ends of dimension that is too short with random noise
+    elif resize_mode == 'fill':
+        # resize to biggest of ratios (relatively smaller image), keeping aspect ratio
         if width_ratio > height_ratio:
-            padding = (height - resize_height)/2
-            noise_size = (padding, width)
-            if channels > 1:
-                noise_size += (channels,)
-            noise = np.random.randint(0, 255, noise_size).astype('uint8')
-            image = np.concatenate((noise, image, noise), axis=0)
+            resize_width = width
+            resize_height = int(round(image.shape[0] / width_ratio))
+            if (height - resize_height) % 2 == 1:
+                resize_height += 1
         else:
-            padding = (width - resize_width)/2
-            noise_size = (height, padding)
-            if channels > 1:
-                noise_size += (channels,)
-            noise = np.random.randint(0, 255, noise_size).astype('uint8')
-            image = np.concatenate((noise, image, noise), axis=1)
+            resize_height = height
+            resize_width = int(round(image.shape[1] / height_ratio))
+            if (width - resize_width) % 2 == 1:
+                resize_width += 1
+        image = scipy.misc.imresize(image, (resize_height, resize_width), interp=interp)
+    elif resize_mode == 'half_crop':
+        # resize to average ratio keeping aspect ratio
+        new_ratio = (width_ratio + height_ratio) / 2.0
+        resize_width = int(round(image.shape[1] / new_ratio))
+        resize_height = int(round(image.shape[0] / new_ratio))
+        if width_ratio > height_ratio and (height - resize_height) % 2 == 1:
+            resize_height += 1
+        elif width_ratio < height_ratio and (width - resize_width) % 2 == 1:
+            resize_width += 1
+        image = scipy.misc.imresize(image, (resize_height, resize_width), interp=interp)
+        # chop off ends of dimension that is still too long
+        if width_ratio > height_ratio:
+            start = int(round((resize_width-width)/2.0))
+            image = image[:,start:start+width]
+        else:
+            start = int(round((resize_height-height)/2.0))
+            image = image[start:start+height,:]
+    else:
+        raise Exception('unrecognized resize_mode "%s"' % resize_mode)
 
-        return image
+    # fill ends of dimension that is too short with random noise
+    if width_ratio > height_ratio:
+        padding = (height - resize_height)/2
+        noise_size = (padding, width)
+        if channels > 1:
+            noise_size += (channels,)
+        noise = np.random.randint(0, 255, noise_size).astype('uint8')
+        image = np.concatenate((noise, image, noise), axis=0)
+    else:
+        padding = (width - resize_width)/2
+        noise_size = (height, padding)
+        if channels > 1:
+            noise_size += (channels,)
+        noise = np.random.randint(0, 255, noise_size).astype('uint8')
+        image = np.concatenate((noise, image, noise), axis=1)
+
+    return image
 
 def embed_image_html(image):
     """

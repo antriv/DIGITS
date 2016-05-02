@@ -196,6 +196,14 @@ def create():
                     selected_gpus = [str(form.select_gpu.data)]
                     gpu_count = None
 
+
+            # Set up augmentation structure
+            data_aug = {}
+            data_aug['flip']     = form.aug_flip.data
+            data_aug['quad_rot'] = form.aug_quadrot.data
+            data_aug['rot_use']  = form.aug_rot_use.data
+            data_aug['rot']      = form.aug_rot.data
+
             # Python Layer File may be on the server or copied from the client.
             fs.copy_python_layer_file(
                 bool(form.python_layer_from_client.data),
@@ -222,6 +230,7 @@ def create():
                         random_seed     = form.random_seed.data,
                         solver_type     = form.solver_type.data,
                         shuffle         = form.shuffle.data,
+                        data_aug        = data_aug,
                         )
                     )
 
@@ -247,11 +256,11 @@ def create():
     # If there are multiple jobs launched, go to the home page.
     return flask.redirect('/')
 
-def show(job):
+def show(job, related_jobs=None):
     """
     Called from digits.model.views.models_show()
     """
-    return flask.render_template('models/images/generic/show.html', job=job)
+    return flask.render_template('models/images/generic/show.html', job=job, related_jobs=related_jobs)
 
 @blueprint.route('/large_graph', methods=['GET'])
 def large_graph():
@@ -289,6 +298,12 @@ def infer_one():
     if 'show_visualizations' in flask.request.form and flask.request.form['show_visualizations']:
         layers = 'all'
 
+    resize_override = ''
+    if 'dont_resize' in flask.request.form and flask.request.form['dont_resize']:
+        resize_override = 'none'
+
+
+
     # create inference job
     inference_job = ImageInferenceJob(
                 username    = utils.auth.get_username(),
@@ -296,7 +311,8 @@ def infer_one():
                 model       = model_job,
                 images      = [image_path],
                 epoch       = epoch,
-                layers      = layers
+                layers      = layers, 
+                resize_override = resize_override
                 )
 
     # schedule tasks
@@ -317,6 +333,22 @@ def infer_one():
     image = None
     if inputs is not None and len(inputs['data']) == 1:
         image = utils.image.embed_image_html(inputs['data'][0])
+
+#    print_image = 0
+#    if print_image == 1:
+#	    import numpy as np
+#	    import PIL.Image
+#	    file_directory = '/home/brainstorm/srodrigues/nnworker/datasets/text/'
+#	   # file_name = '/home/brainstorm/srodrigues/nnworker/datasets/text/' + 'output_predictions.txt'
+#	   # f = open(file_name, 'w')
+#	    res = dict((name, blob.tolist()) for name,blob in outputs.iteritems())['output']
+#	    image = (np.array(res).reshape((32, 32, 3))).astype(np.uint8) # it should be already uint8, but...
+#	    result = PIL.Image.fromarray(image)
+#	    result.save(file_directory+'image.jpg')
+#	   # f.write(str(res))
+#	   # f.close()
+
+
 
     if request_wants_json():
         return flask.jsonify({'outputs': dict((name, blob.tolist()) for name,blob in outputs.iteritems())})
@@ -451,7 +483,8 @@ def infer_many():
                 model       = model_job,
                 images      = paths,
                 epoch       = epoch,
-                layers      = 'none'
+                layers      = 'none',
+                resize_override = ''
                 )
 
     # schedule tasks

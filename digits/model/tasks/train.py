@@ -7,10 +7,13 @@ import time
 
 import flask
 import gevent
+import psutil
+import platform
 
 from digits import device_query
 from digits.task import Task
 from digits.utils import subclass, override
+from digits.utils.forms import get_data_from_title_array
 
 # NOTE: Increment this everytime the picked object changes
 PICKLE_VERSION = 2
@@ -42,6 +45,7 @@ class TrainTask(Task):
         crop_size -- crop each image down to a square of this size
         use_mean -- subtract the dataset's mean file or mean pixel
         random_seed -- optional random seed
+        aug_* -- dataset augmentation @TODO [not documented because under development]
         """
         self.gpu_count = kwargs.pop('gpu_count', None)
         self.selected_gpus = kwargs.pop('selected_gpus', None)
@@ -55,6 +59,8 @@ class TrainTask(Task):
         self.shuffle = kwargs.pop('shuffle', None)
         self.network = kwargs.pop('network', None)
         self.framework_id = kwargs.pop('framework_id', None)
+
+        self.data_aug    = kwargs.pop('data_aug', None)
 
         super(TrainTask, self).__init__(**kwargs)
         self.pickver_task_train = PICKLE_VERSION
@@ -179,8 +185,22 @@ class TrainTask(Task):
 
         # this thread continues until killed in after_run()
         while True:
-            data = []
+            # CPU (Non-GPU) Info
+            data_cpu = {}
+            data_cpu['pid'] = self.p.pid
+            try:
+                ps = psutil.Process(self.p.pid) # 'self.p' is the system call object for the training object
+                data_cpu['mem_uss'] = ps.memory_full_info().uss
+                data_cpu['cpu'] = ps.cpu_percent(interval=1)
+                if platform.system() == 'Linux': # Disk IO Info
+                    data_cpu['io_rb'] = ps.io_counters().read_bytes
+                    data_cpu['io_wb'] = ps.io_counters().write_bytes
+                data_cpu['mem_uss_pct'] =  100*data_cpu['mem_uss']/psutil.virtual_memory().total
+            except: 
+                pass
 
+            # GPU Info
+            data = []
             for index, device in devices:
                 update = {'name': device.name, 'index': index}
                 nvml_info = device_query.get_nvml_info(index)
@@ -190,7 +210,8 @@ class TrainTask(Task):
 
             with app.app_context():
                 html = flask.render_template('models/gpu_utilization.html',
-                        data = data)
+                        data = data,
+                        data_cpu = data_cpu)
 
                 socketio.emit('task update',
                         {
@@ -244,17 +265,20 @@ class TrainTask(Task):
 
             if data['columns']:
                 # isolate the Loss column data for the sparkline
-                graph_data = data['columns'][0][1:]
+                data_loss = get_data_from_title_array(data['columns'], 'loss-train');
+                data_acc = get_data_from_title_array(data['columns'], 'accuracy-val');
+
                 socketio.emit('task update',
-                              {
-                                  'task': self.html_id(),
-                                  'job_id': self.job_id,
-                                  'update': 'combined_graph',
-                                  'data': graph_data,
-                              },
-                              namespace='/jobs',
-                              room='job_management',
-                          )
+                        {
+                                'task': self.html_id(),
+                                'job_id': self.job_id,
+                                'update': 'combined_graph',
+                                'data_loss': data_loss,
+                                'data_acc': data_acc
+                            },
+                            namespace='/jobs',
+                            room='job_management',
+                        )
 
         # lr graph data
         data = self.lr_graph_data()
@@ -285,6 +309,19 @@ class TrainTask(Task):
                     {
                         'task': self.html_id(),
                         'update': 'combined_graph',
+                        'data': data,
+                        },
+                    namespace='/jobs',
+                    room=self.job_id,
+                    )
+
+        # confusion matrix data
+        data = self.confusion_matrix_val_data()
+        if data:
+            socketio.emit('task update',
+                    {
+                        'task': self.html_id(),
+                        'update': 'confusion_matrix',
                         'data': data,
                         },
                     namespace='/jobs',
@@ -431,6 +468,38 @@ class TrainTask(Task):
         self._labels = labels
         return self._labels
 
+
+    def confusion_matrix_val_data(self):
+        """
+        Returns (formatted?) validation confusion matrix data
+
+        Keyword arguments:
+
+        """
+
+        if not self.val_outputs or 'epoch' not in self.val_outputs or 'confusion_matrix' not in self.val_outputs:
+            return None
+
+        labels = self.get_labels()
+
+        if not labels:
+            return None
+
+        # return 100-200 values or fewer
+        stride = max(len(self.val_outputs['epoch'].data)/100,1)
+        e = self.val_outputs['epoch'].data[::stride]
+        cm = self.val_outputs['confusion_matrix'].data[::stride]
+        return {
+                'labels': labels,
+                'cm': cm,
+                'e': e,
+                'names': {
+                    'cm': 'Confusion Matrix',
+                    'e': 'Epoch'
+                    },
+                }
+
+
     def lr_graph_data(self):
         """
         Returns learning rate data formatted for a C3.js graph
@@ -468,7 +537,7 @@ class TrainTask(Task):
                 'xs': {},
                 'axes': {},
                 'names': {},
-                }
+               }
 
         added_train_data = False
         added_val_data = False
@@ -481,7 +550,7 @@ class TrainTask(Task):
                 # return all data
                 stride = 1
             for name, output in self.train_outputs.iteritems():
-                if name not in ['epoch', 'learning_rate']:
+                if name not in ['epoch', 'learning_rate', 'confusion_matrix']:
                     col_id = '%s-train' % name
                     data['xs'][col_id] = 'train_epochs'
                     data['names'][col_id] = '%s (train)' % name
@@ -506,7 +575,7 @@ class TrainTask(Task):
                 # return all data
                 stride = 1
             for name, output in self.val_outputs.iteritems():
-                if name not in ['epoch']:
+                if name not in ['epoch', 'confusion_matrix']:
                     col_id = '%s-val' % name
                     data['xs'][col_id] = 'val_epochs'
                     data['names'][col_id] = '%s (val)' % name

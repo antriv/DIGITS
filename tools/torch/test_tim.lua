@@ -8,6 +8,7 @@ require 'trepl'
 require 'image'
 require 'lfs'
 
+
 local dir_path = debug.getinfo(1,"S").source:match[[^@?(.*[\/])[^\/]-$]]
 if dir_path ~= nil then
     package.path = dir_path .."?.lua;".. package.path
@@ -26,7 +27,9 @@ opt = lapp[[
 -t,--threads (default 8) number of threads
 -p,--type (default cuda) float or cuda
 -d,--devid (default 1) device ID (if using CUDA)
+-o,--load (string) directory that contains trained model weights
 -n,--network (string) Pretrained Model to be loaded
+-e,--epoch (default -1) weight file of the epoch to be loaded
 -i,--image (string) the value to this parameter depends on "testMany" parameter. If testMany is 'no' then this parameter specifies single image that needs to be classified or else this parameter specifies the location of file which contains paths of multiple images that needs to be classified. Provide full path, if the image (or) images file is in different directory.
 -s,--mean (default '') train images mean (saved as .jpg file)
 -y,--ccn2 (default no) should be 'yes' if ccn2 is used in network. Default : false
@@ -36,14 +39,15 @@ opt = lapp[[
 --testUntil (default -1) specifies how many images in the "image" file to be tested. This parameter is only valid when testMany is set to "yes"
 --subtractMean (default 'image') Select mean subtraction method. Possible values are 'image', 'pixel' or 'none'.
 --labels (default '') file contains label definitions
---snapshot (string) Path to snapshot to load
+--snapshotPrefix (default '') prefix of the weights/snapshots
 --networkDirectory (default '') directory in which network exists
 --allPredictions (default no) If 'yes', displays all the predictions of an image instead of formatted topN results
 --visualization (default no) Create HDF5 database with layers weights and activations. Depends on --testMany~=yes
 --crop (default no) If this option is 'yes', all the images are cropped into square image. And croplength is provided as --croplen parameter
 --croplen (default 0) crop length. This is required parameter when crop option is provided
---resize_override (default no) crop length. This is required parameter when crop option is provided
+--csv (default no) If 'yes', will output a csv
 ]]
+
 
 torch.setnumthreads(opt.threads)
 
@@ -64,6 +68,14 @@ else
     opt.croplen = nil
 end
 
+local snapshot_prefix = ''
+
+if opt.snapshotPrefix ~= '' then
+    snapshot_prefix = opt.snapshotPrefix
+else
+    snapshot_prefix = opt.network
+end
+
 local utils = require 'utils'
 
 local data = require 'data'
@@ -81,6 +93,33 @@ if opt.subtractMean ~= 'none' then
     logmessage.display(0,'Loading mean tensor from '.. opt.mean ..' file')
     meanTensor = data.loadMean(opt.mean, opt.subtractMean == 'pixel')
 end
+
+-- If epoch for the trained model is not provided then select the latest trained model.
+if opt.epoch == -1 then
+    dir_name = paths.concat(opt.load)
+    for file in lfs.dir(dir_name) do
+        file_name = paths.concat(dir_name,file)
+        if lfs.attributes(file_name,"mode") == "file" then
+            if string.match(file, snapshot_prefix .. '_.*_Weights[.]t7') then
+                parts=string.split(file,"_")
+                value = tonumber(parts[#parts-1])
+                if (opt.epoch < value) then
+                    opt.epoch = value
+                end
+            end
+        end
+    end
+end
+
+if opt.epoch == -1 then
+    logmessage.display(2,'There are no pretrained model weights to test in this directory - ' .. paths.concat(opt.networkDirectory))
+    os.exit(-1)
+end
+
+
+
+
+
 
 -- returns shape of input tensor (adjusting to desired crop length if specified)
 function getInputTensorShape(img, optCropLen)
@@ -105,40 +144,33 @@ function loadNetwork(dir, name, labels, weightsFile, tensorType, inputTensorShap
     local parameters = {
         ngpus = (tensorType =='cuda') and 1 or 0,
         nclasses = (labels ~= nil) and #labels or nil,
-        inputShape = inputTensorShape
+        inputShape = inputTensorShape,
     }
     local network = require (name)(parameters)
-    local model
-    if (string.find(weightsFile, '_Weights')) then
-        -- snapshot was created by dumping learnable weights/bias into a file
-        -- this means other parameters such as those used for batch normalization
-        -- could be missing, which could lead to incorrect predictions
-        model = network.model
+    local model = network.model
 
-        -- allow user to fine tune model (we need to do this *before* loading weights)
-        if network.fineTuneHook then
-            logmessage.display(0,'Calling user-defined fine tuning hook...')
-            model = network.fineTuneHook(model)
-        end
-        -- load parameters from snapshot
-        local weights, gradients = model:getParameters()
-        logmessage.display(0, 'Loading ' .. weightsFile)
-        local savedWeights = torch.load(weightsFile)
-        weights:copy(savedWeights)
-    else
-        -- the full model was saved
-        assert(string.find(weightsFile, '_Model'))
-        model = torch.load(weightsFile)
-        network.model = model
+    -- allow user to fine tune model
+    if network.fineTuneHook then
+        logmessage.display(0,'Calling user-defined fine tuning hook...')
+        model = network.fineTuneHook(model)
     end
+
+    -- load parameters from snapshot
+    local weights, gradients = model:getParameters()
+
+    logmessage.display(0, 'Loading ' .. weightsFile)
+    local savedWeights = torch.load(weightsFile)
+    weights:copy(savedWeights)
 
     if tensorType =='cuda' then
         model:cuda()
     else
         model:float()
     end
+
     -- as we want to classify, let's disable dropouts by enabling evaluation mode
     model:evaluate()
+
     return network
 end
 
@@ -157,7 +189,7 @@ if ccn2 ~= nil then
     using_ccn2 = 'yes'
 end
 
-local weights_filename = opt.snapshot
+local weights_filename = paths.concat(opt.load, snapshot_prefix .. '_' .. opt.epoch .. '_Weights.t7')
 
 -- loads an image from specified path (file system or URL)
 local function loadImage(img_path)
@@ -183,20 +215,10 @@ end
 -- preprocess image (subtract mean and crop)
 local function preprocess(im, mean, croplen)
 
-    if opt.resize_override == 'yes' then
-        -- Resize the mean just to fill the entire image.. setting to nil can create a huge discrepancy on networks that have a mean included during training
-        if mean then
-            mean = image.scale(mean, im:size(2), im:size(3), 'bilinear')
-        end
-        -- Set the crop to nothing
-        croplen = nil
-    end
-
     -- Depending on the function arguments, image preprocess may include conversion from RGB to BGR and mean subtraction, image resize after mean subtraction
     local image_preprocessed = data.PreProcess(im, -- input image
                                                mean, -- mean
-                                               'none', 'none', -- augFlip, augQuadRot
-                                               0, 0, -- scale and arbitrary rotation augmentation
+                                               false, -- do not mirror
                                                false, -- do not crop
                                                false, -- test mode
                                                nil, nil, nil -- crop parameters (all nil)
@@ -209,8 +231,7 @@ local function preprocess(im, mean, croplen)
         c = (image_size[2]-croplen)/2 + 1
         image_preprocessed = data.PreProcess(image_preprocessed, -- input image
                                              nil, -- no mean subtraction (this was done before)
-                                             'none', 'none', -- augFlip, augQuadRot
-                                             0, 0, -- scale and arbitrary rotation augmentation
+                                             false, -- do not mirror
                                              true, -- crop
                                              false, -- test mode
                                              c, c, croplen -- crop parameters
@@ -236,18 +257,28 @@ end
 -- tensor of inputs batch size * channels * height * width
 local inputs
 
+
+if opt.csv =='yes' then
+    batch_size = 1 --high batch sizes do not seem much faster
+    require 'Csv'
+    csvfilename = opt.image .. '.csv'
+    csv = Csv(csvfilename, "w", ';')
+    -- note the csv file will be closed later
+
+    prediction_maps = torch.Tensor(table.getn(class_labels),1281,2978) --(1106,1673-delft)
+    tilesize_maps = 2; --per classification (x,y) it will fill on for [x:x+tilesize_maps] and [y:y+tilesize_maps]
+end
+
 -- predict batch and display the topN predictions for the images in batch
-local function predictBatch(inputs, model)
+local function predictBatch(inputs, model, filename_stem)
     if opt.type == 'float' then
         predictions = model:forward(inputs:float())
     elseif opt.type =='cuda' then
         predictions = model:forward(inputs:cuda())
     end
-
     for i=1,counter do
         local prediction
         index = index + 1
-
         if type(predictions) == 'table' then
             prediction = {}
             for j=1,#predictions do
@@ -263,12 +294,10 @@ local function predictBatch(inputs, model)
                 prediction = predictions[i]
             end
         end
-
         if class_labels then
             -- assume logSoftMax and convert to probabilities
             prediction:exp()
         end
-
         if opt.allPredictions == 'no' then
             --display topN predictions of each image
             prediction,classes = prediction:float():sort(true)
@@ -278,9 +307,36 @@ local function predictBatch(inputs, model)
             end
         else
             allPredictions = utils.dataToJson(prediction)
-            logmessage.display(0,'Predictions for image ' .. index ..': '..allPredictions)
+            --logmessage.display(0,'Predictions for image ' .. index ..': '..allPredictions)
+            print(index)
+
+            if opt.csv =='yes' then
+                prediction_table = torch.totable(prediction)
+                table.insert(prediction_table, 1, filename_stem)
+                csv:write(prediction_table)
+                --print(filename_stem)
+
+                x,y = string.match(filename_stem,"(%d+)x(%d+)") --x,y coordinate
+
+                if (x+tilesize_maps>prediction_maps:size(3)) then
+                    --resize
+                end
+                if (y+tilesize_maps>prediction_maps:size(3)) then
+                    --resize
+                end
+
+                for k=1,prediction_maps:size(1) do
+                    -- Below looping is not efficient at all
+                    for xi=x+1,x+1+tilesize_maps do
+                        for yi=y+1,y+1+tilesize_maps do
+                            prediction_maps[k][yi][xi]=prediction[k]
+                        end
+                    end
+                end
+            end
         end
     end
+
 end
 
 if opt.testMany == 'yes' then
@@ -291,6 +347,9 @@ if opt.testMany == 'yes' then
         for line in file:lines() do
             counter = counter + 1
             local image_path = line:match( "^%s*(.-)%s*$" )
+            local image_filename_stem = string.match(image_path, "([^/]+)%.")
+            --print(image_path)
+            --print(image_filename_stem)
             local im = loadImage(image_path)
             local inputShape = getInputTensorShape(im, opt.croplen)
             if not network then
@@ -305,15 +364,13 @@ if opt.testMany == 'yes' then
                 inputs = torch.Tensor(batch_size, input:size(1), input:size(2), input:size(3))
             end
             inputs[counter] = input
-
             if counter == batch_size then
-                predictBatch(inputs, model)
+                predictBatch(inputs, model, image_filename_stem)
                 counter = 0
             end
             if (index+counter) == opt.testUntil then -- Here, index+counter represents total number of images read from file
                 break
             end
-
         end
         -- still some images needs to be predicted.
         if counter > 0 then
@@ -322,25 +379,21 @@ if opt.testMany == 'yes' then
                 for j=counter+1,batch_size do
                     inputs[j] = inputs[counter]
                 end
-                predictBatch(inputs, model)
-
+                predictBatch(inputs, model, image_filename_stem)
             else
-                predictBatch(inputs:narrow(1,1,counter), model)
+                predictBatch(inputs:narrow(1,1,counter), model, image_filename_stem)
             end
         end
     else
         logmessage.display(2,'Image file not found : ' .. opt.image)
     end
-
 else
     -- only one image needs to be predicted
     local im = loadImage(opt.image)
-    --print(im:size())
     local inputShape = getInputTensorShape(im, opt.croplen)
     local network = loadNetwork(opt.networkDirectory, opt.network, class_labels, weights_filename, opt.type, inputShape)
     local model = network.model
     local input = preprocess(im, meanTensor, opt.croplen or network.croplen)
-    --print(input:size())
     assert(input ~= nil, "Failed to load image")
     inputs = torch.Tensor(1, input:size(1), input:size(2), input:size(3))
     inputs[1] = input
@@ -387,4 +440,18 @@ else
         vis_db:close()
     end
 end
+
+
+if opt.csv =='yes' then
+    csv:close()
+    --savePNG('test.png', prediction_maps[{{},{},1}])
+    print(prediction_maps:size())
+    print(prediction_maps:size(1))
+    for i=1,prediction_maps:size(1) do
+        local label_escaped = string.gsub(class_labels[i], "%s+", "_") 
+        image.savePNG(label_escaped..'.png', prediction_maps[i])
+    end
+end
+
+
 

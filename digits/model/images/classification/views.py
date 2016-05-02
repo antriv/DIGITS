@@ -237,12 +237,20 @@ def create():
                     gpu_count = 1
                     selected_gpus = None
             else:
+<<<<<<< HEAD
                 if form.select_gpu.data == 'next':
                     gpu_count = 1
                     selected_gpus = None
                 else:
                     selected_gpus = [str(form.select_gpu.data)]
                     gpu_count = None
+
+            # Set up augmentation structure
+            data_aug = {}
+            data_aug['flip']     = form.aug_flip.data
+            data_aug['quad_rot'] = form.aug_quadrot.data
+            data_aug['rot_use']  = form.aug_rot_use.data
+            data_aug['rot']      = form.aug_rot.data
 
             # Python Layer File may be on the server or copied from the client.
             fs.copy_python_layer_file(
@@ -270,6 +278,7 @@ def create():
                         random_seed     = form.random_seed.data,
                         solver_type     = form.solver_type.data,
                         shuffle         = form.shuffle.data,
+                        data_aug        = data_aug,
                         )
                     )
 
@@ -295,11 +304,11 @@ def create():
     # If there are multiple jobs launched, go to the home page.
     return flask.redirect('/')
 
-def show(job):
+def show(job, related_jobs=None):
     """
     Called from digits.model.views.models_show()
     """
-    return flask.render_template('models/images/classification/show.html', job=job, framework_ids = [fw.get_id() for fw in frameworks.get_frameworks()])
+    return flask.render_template('models/images/classification/show.html', job=job, framework_ids = [fw.get_id() for fw in frameworks.get_frameworks()], related_jobs=related_jobs)
 
 @blueprint.route('/large_graph', methods=['GET'])
 def large_graph():
@@ -340,6 +349,12 @@ def classify_one():
     if 'show_visualizations' in flask.request.form and flask.request.form['show_visualizations']:
         layers = 'all'
 
+    resize_override = ''
+    if 'dont_resize' in flask.request.form and flask.request.form['dont_resize']:
+        resize_override = 'none'
+
+    # print('classify_one() : resize_override='+resize_override)
+
     # create inference job
     inference_job = ImageInferenceJob(
                 username    = utils.auth.get_username(),
@@ -347,7 +362,8 @@ def classify_one():
                 model       = model_job,
                 images      = [image_path],
                 epoch       = epoch,
-                layers      = layers
+                layers      = layers, #aka show_visualizations
+                resize_override = resize_override
                 )
 
     # schedule tasks
@@ -436,7 +452,8 @@ def classify_many():
                 model       = model_job,
                 images      = paths,
                 epoch       = epoch,
-                layers      = 'none'
+                layers      = 'none',
+                resize_override = ''
                 )
 
     # schedule tasks
@@ -587,7 +604,8 @@ def top_n():
                 model       = model_job,
                 images      = paths,
                 epoch       = epoch,
-                layers      = 'none'
+                layers      = 'none',
+                resize_override = ''
                 )
 
     # schedule tasks
