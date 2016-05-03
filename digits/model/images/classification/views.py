@@ -237,7 +237,6 @@ def create():
                     gpu_count = 1
                     selected_gpus = None
             else:
-<<<<<<< HEAD
                 if form.select_gpu.data == 'next':
                     gpu_count = 1
                     selected_gpus = None
