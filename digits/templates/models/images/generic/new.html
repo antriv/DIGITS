@@ -115,10 +115,10 @@ $("#dataset").change();
                     {{form.aug_flip.tooltip}}
                     {{form.aug_flip(class='form-control')}}
                 </div>
-                <div class="form-group{{mark_errors([form.aug_quadrot])}}">
-                    {{form.aug_quadrot.label}}
-                    {{form.aug_quadrot.tooltip}}
-                    {{form.aug_quadrot(class='form-control')}}
+                <div class="form-group{{mark_errors([form.aug_quad_rot])}}">
+                    {{form.aug_quad_rot.label}}
+                    {{form.aug_quad_rot.tooltip}}
+                    {{form.aug_quad_rot(class='form-control')}}
                 </div>
 
                 {{form.aug_rot_use}}
@@ -613,7 +613,7 @@ function visualizeNetwork() {
                         <div class="pull-right">
                             <a href=# class="btn btn-info" onClick="return visualizeNetwork();">Visualize</a>
                         </div>
-                        {{form.custom_network(class='form-control', rows=10)}}
+                        {{form.custom_network(class='form-control', rows=24)}}
                     </div>
                     <div class="form-group{{mark_errors([form.custom_network_snapshot])}}">
                         {{form.custom_network_snapshot.label}}

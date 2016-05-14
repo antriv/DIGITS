@@ -3,6 +3,9 @@ require 'torch' -- torch
 require 'nn' -- provides a normalization operator
 require 'utils' -- various utility functions
 require 'hdf5' -- import HDF5 now as it is unsafe to do it from a worker thread
+
+require 'unsup' -- for zca whitening
+
 local threads = require 'threads' -- for multi-threaded data loader
 check_require 'image' -- for color transforms
 
@@ -43,28 +46,146 @@ local function all_keys(cursor_,key_,op_)
 end
 
 
--- Scale augmentation, rescales but returns the same size
-local reSampleScale = function(scaleRange)
-    local applyReSample = function(Data)
-        local sizeImg = Data:size()
-        local szx = torch.random(math.ceil(sizeImg[3]*scaleRange)) -- maximum extra size
-        local szy = torch.random(math.ceil(sizeImg[2]*scaleRange)) -- maximum extra size
-        local startx = torch.random(szx)
-        local starty = torch.random(szy)
-        return image.scale(Data:narrow(2,starty,sizeImg[2]-szy):narrow(3,startx,sizeImg[3]-szx),sizeImg[3],sizeImg[2])
-    end
-    return applyReSample
+
+-- Augmentation to grayscale, rips out one channel
+local augmentGrayscale = function(im)
+    return image.rgb2y(im)
 end
 
--- Arbitrary rotation augmentation
-local rotate = function(angleRange)
-    local applyRot = function(Data)
-        local angle = torch.randn(1)[1]*angleRange
-        local rot = image.rotate(Data,math.rad(angle),'bilinear')
-        return rot
+-- Local Contrast Normalization, 1 or 3 channels.
+local augmentLCN = function(im)
+    -- This function retains the input size and pads with zeros, although LCS does not do that natively
+    local kernel_size = 9
+    local kernel_size_offset = (kernel_size-1)/2+1
+
+    -- Allocate the return variable
+    im_target = torch.Tensor(im:size()):fill(0)
+
+    -- Note the LCS does not natively pad, we need to take that into account (lcs image will be smaller)
+    im_lcn = torch.Tensor(im:size(1),im:size(2)-kernel_size+1,im:size(3)-kernel_size+1)
+    for c=1,im:size(1) do
+        im_lcn[c] = image.lcn(im[c], image.gaussian({size=kernel_size,sigma=1.591/kernel_size,normalize=true}))
     end
-    return applyRot
+
+    -- Return to the original size
+    im_target:narrow(2, kernel_size_offset, im_target:size(2)-kernel_size+1):narrow(3, kernel_size_offset, im_target:size(3)-kernel_size+1):copy(im_lcn)
+    return im_target
 end
+
+-- HSV Augmentation
+local augmentHSV = function(augHSV)
+    -- input parameter augHSV should contain 'H' 'S' and 'V' keys with a float as stddev value
+    -- Fair stddev values are [H,S,V] = [0.01, 0.05, 0.05], a more noticable change is [0.02, 0.08, 0.08]
+    local applyHsvAug = function(Data)
+        Data = image.rgb2hsv(Data:double())
+        if augHSV.H >0.001 then
+            -- We do not need to account for overflow because every number wraps around (1.1=2.1=3.1,etc)
+            local rng_h = torch.normal(0, augHSV.H) -- We add a round value to prevent an underflow bug (<0 becomes black bug)
+            Data[1] = torch.add(Data[1], torch.Tensor(1,Data:size(2),Data:size(2)):fill(rng_h))
+        end
+        if augHSV.S >0.001 then
+            local rng_s = torch.normal(0, augHSV.S) 
+            Data[2] = torch.add(Data[2], torch.Tensor(1,Data:size(2),Data:size(3)):fill(rng_s))
+        end
+        if augHSV.V >0.001 then
+            local rng_v = torch.normal(0, augHSV.V)
+            Data[3] = torch.add(Data[3], torch.Tensor(1,Data:size(2),Data:size(3)):fill(rng_v))
+        end
+        Data.image.saturate(Data) -- bound between 0 and 1
+        return image.hsv2rgb(Data):float()
+    end
+    return applyHsvAug
+end
+
+---- Scale augmentation, rescales but returns the same size
+--local reSampleScale = function(scaleRange)
+--    local applyReSample = function(Data)
+--        local sizeImg = Data:size()
+--        local szx = torch.random(math.ceil(sizeImg[3]*scaleRange)) -- maximum extra size x
+--        local szy = torch.random(math.ceil(sizeImg[2]*scaleRange)) -- maximum extra size y
+--        local startx = torch.random(szx)
+--        local starty = torch.random(szy)
+--        return image.scale(Data:narrow(2, starty, sizeImg[2]-szy):narrow(3, startx, sizeImg[3]-szx), sizeImg[3], sizeImg[2], 'bilinear')
+--    end
+--    return applyReSample
+--end
+--
+---- Arbitrary rotation augmentation
+--local rotate = function(angleRange)
+--    local applyRot = function(Data)
+--        local angle = torch.randn(1)[1]*angleRange
+--        local rot = image.rotate(Data,math.rad(angle),'bilinear')
+--        return rot
+--    end
+--    return applyRot
+--end
+
+
+local warp = function(im, augRot, augScale)
+    -- A nice function of scale is 0.05 (stddev of scale change), 
+    -- and a nice value for ration is a few degrees or more if your dataset allows for it
+
+    local width = im:size()[3] 
+    local height = im:size()[2]
+    local nchan = im:size()[1]
+
+    -- Scale <0=zoom in(+rand crop), >0=zoom out
+    local scale_x = 0
+    if augScale > 0.001 then
+        local scale_x = -torch.normal(0, augScale) -- @TODO: WHY MINUS?
+    end
+
+    local scale_y = scale_x -- keep aspect ratio the same
+
+    -- Angle of rotation
+    local rot_angle = torch.randn(1)[1] * augRot --deg
+
+
+    -- Given a zoom in or out, we move around our canvas.
+    local move_x = torch.uniform(-scale_x,scale_x)
+    local move_y = torch.uniform(-scale_y,scale_y)
+
+    -- x/y grids
+    local grid_y = torch.ger( torch.linspace(-1-scale_y,1+scale_y,height), torch.ones(width) )
+    local grid_x = torch.ger( torch.ones(height), torch.linspace(-1-scale_x,1+scale_x,width) )
+
+    local flow = torch.FloatTensor()
+    flow:resize(2,height,width)
+    flow:zero()
+
+    -- Apply scale
+    flow_scale = torch.FloatTensor()
+    flow_scale:resize(2,height,width)
+    flow_scale[1] = grid_y
+    flow_scale[2] = grid_x
+    flow_scale[1]:add(1-move_y):mul(0.5) -- 0 to 1
+    flow_scale[2]:add(1-move_x):mul(0.5) -- 0 to 1
+    flow_scale[1]:mul(height)
+    flow_scale[2]:mul(width)
+    flow:add(flow_scale)
+
+    if (rot_angle>0.01 or rot_angle <0.01) then
+        -- Apply rotation
+        local flow_rot = torch.FloatTensor()
+        flow_rot:resize(2,height,width)
+        flow_rot[1] = grid_y * ((height-1)/2) * -1
+        flow_rot[2] = grid_x * ((width-1)/2) * -1
+        view = flow_rot:reshape(2,height*width)
+        function rmat(deg)
+          local r = deg/180*math.pi
+          return torch.FloatTensor{{math.cos(r), -math.sin(r)}, {math.sin(r), math.cos(r)}}
+        end
+
+        local rotmat = rmat(rot_angle)
+        local flow_rotr = torch.mm(rotmat, view)
+        flow_rot = flow_rot - flow_rotr:reshape( 2, height, width )
+        flow:add(flow_rot)
+    end
+
+    return image.warp(im, flow, 'bilinear', false)
+end
+
+
 
 -- Quadrilateral rotation (options {0 1 2 3}={0,rot90,rot270,rot180})
 -- Note rotating like this in 90 degree steps is extremely efficient
@@ -91,52 +212,111 @@ local rot90 = function(rotFlag)
 end
 
 --PreProcess will be called per single image
-local PreProcess = function(y, meanTensor, augFlip, augQuadRot, augScale, augRot, crop, train, cropY, cropX, croplen)
+local PreProcess = function(y, train, meanTensor, augOpt)
+    -- augOpt.augFlip
+    -- augOpt.augQuadRot
+    -- augOpt.augRot
+    -- augOpt.augScale
+    -- augOpt.augHSV = {H=0, S=0, V=0}
+    -- augOpt.ConvertColor
+    -- augOpt.crop = {use=false, Y=-1, X=-1, len=-1}
+
+
+
+
+    
+
+    --print(y)
+
     if meanTensor then
         for i=1,meanTensor:size(1) do
             y[i]:add(-meanTensor[i])
         end
+    else -- Not using mean tensor:
+        -- normalize to [-1:1]
+        --y:div(127.5) 
+        --y:add(-1)
+
+        -- normalize to [0:1]
+        y:div(255) 
+        --y:add(-1)
     end
 
+    --image.savePNG( '/home/brainstorm/temp/' .. os.date("%H%I%M%S_A") .. '.png', y)
+
+
     -- augFlip {none, fliplr, flipud, fliplrud}
-    if (augFlip == 'fliplr' or  augFlip == 'fliplrud') and torch.random(2)==1 then 
-        y = image.hflip(y)
-    end
-    if (augFlip == 'flipud' or  augFlip == 'fliplrud') and torch.random(2)==1 then
-        y = image.vflip(y)
+    if (augOpt.augFlip) then
+        if (augOpt.augFlip == 'fliplr' or  augOpt.augFlip == 'fliplrud') and torch.random(2)==1 then 
+            y = image.hflip(y)
+        end
+
+        if (augOpt.augFlip == 'flipud' or  augOpt.augFlip == 'fliplrud') and torch.random(2)==1 then
+            y = image.vflip(y)
+        end
     end
 
     -- augQuadRot {none, rot90, rot180, rotall}
-    if augQuadRot == 'rot90' then 
-        y = rot90(torch.random(3))(y)
-    elseif augQuadRot == 'rot180' and torch.random(2)==1 then
-        y = rot90(3)(y)
-    elseif augQuadRot == 'rotall' then
-        local random_rot = torch.random(4)
-        y = rot90(random_rot)(y) -- Randomly choose one of four rotations
-    end
-    
-    if augScale > 0.01 then
-       y = reSampleScale(augScale)(y)
-    end
-
-    if augRot >0.01 then
-        y = rotate(augRot)(y)
-    end
-
-    if crop then
-
-        if train == true then
-            --During training we will crop randomly
-            local valueY = math.ceil(torch.FloatTensor.torch.uniform()*cropY)
-            local valueX = math.ceil(torch.FloatTensor.torch.uniform()*cropX)
-            y = image.crop(y, valueX-1, valueY-1, valueX+croplen-1, valueY+croplen-1)
-
-        else
-            --for validation we will crop at center
-            y = image.crop(y, cropX-1, cropY-1, cropX+croplen-1, cropY+croplen-1)
+    if augOpt.augQuadRot then
+        if augOpt.augQuadRot == 'rot90' then 
+            y = rot90(torch.random(3))(y)
+        elseif augOpt.augQuadRot == 'rot180' and torch.random(2)==1 then
+            y = rot90(3)(y)
+        elseif augOpt.augQuadRot == 'rotall' then
+            local random_rot = torch.random(4)
+            y = rot90(random_rot)(y) -- Randomly choose one of four rotations
         end
     end
+
+    --if augOpt.augRot and (augOpt.augRot >0.01) then
+    --    y = rotate(augOpt.augRot)(y)
+    --end
+    --if augOpt.augScale and (augOpt.augScale > 0.01) then
+    --   y = reSampleScale(augOpt.augScale)(y)
+    --end
+
+    if augOpt.augRot and augOpt.augScale and ((augOpt.augRot >0.01) or (augOpt.augScale > 0.01)) then
+        y = warp(y, augOpt.augRot, augOpt.augScale)
+    end
+
+
+
+    if augOpt.augHSV then
+        if (augOpt.augHSV.H > 0.001) or (augOpt.augHSV.S > 0.001)  or (augOpt.augHSV.V > 0.001) then
+            assert(y:size(1)==3, 'Cannot mix HSV augmentation without the image having 3 channels.')
+            -- Augments H,S,V values, but returns back to RGB.
+            y = augmentHSV(augOpt.augHSV)(y)
+            -- Note: an RGB image is returned (as was the input)
+        end
+    end
+
+    if augOpt.ConvertColor then 
+        if augOpt.ConvertColor == 'grayscale' then
+            -- Converts from a RGB torch 1 channel grayscale (Y)
+            y = augmentGrayscale(y)
+            assert(not meanTensor, 'Mixing mean subtraction and using Grayscale is not allowed.')
+        elseif augOpt.ConvertColor == 'LCN' then
+            -- Converts all image channels with LCN
+            y = augmentLCN(y)
+            assert(not meanTensor, 'Mixing mean subtraction and using LCN is not allowed.')
+        end
+    end
+
+    if augOpt.crop and augOpt.crop.use then
+        if train == true then
+            --During training we will crop randomly
+            local valueY = math.ceil(torch.FloatTensor.torch.uniform() * augOpt.crop.Y)
+            local valueX = math.ceil(torch.FloatTensor.torch.uniform() * augOpt.crop.X)
+            y = image.crop(y, valueX-1, valueY-1, valueX + augOpt.crop.len-1, valueY + augOpt.crop.len-1)
+        else
+            --for validation we will crop at center
+            y = image.crop(y, augOpt.crop.X-1, augOpt.crop.Y-1, augOpt.crop.X + augOpt.crop.len-1, augOpt.crop.Y + augOpt.crop.len-1)
+        end
+    end
+
+    --image.savePNG( '/home/brainstorm/temp/' .. os.date("%H%I%M%S_B") ..'.png', y)
+    --os.execute("sleep 2")
+
     return y
 end
 
@@ -243,9 +423,9 @@ end
 
 -- Meta class
 DBSource = {mean = nil, ImageChannels = 0, ImageSizeY = 0, ImageSizeX = 0, total=0,
-           -- mirror=false, 
-            crop=false, croplen=0, cropY=0, cropX=0, subtractMean=true,
-            train=false, classification=false}
+            -- mirror=false, crop=false, croplen=0, cropY=0, cropX=0, 
+            augOpt={},
+            subtractMean=true, train=false, classification=false}
 
 -- Derived class method new
 -- Creates a new instance of a database
@@ -359,10 +539,14 @@ function DBSource:new (backend, db_path, labels_db_path, meanTensor, isTrain, sh
     self.train = isTrain
     self.shuffle = shuffle
     self.classification = classification
-    self.augFlip = 'none'
-    self.augQuadRot = 'none'
-    self.augscale = 0
-    self.augRot = 0
+
+    self.augOpt.augFlip = 'none'
+    self.augOpt.augQuadRot = 'none'
+    self.augOpt.augRot = 0
+    self.augOpt.augScale = 0
+    self.augOpt.augHSV = {H=0, S=0, V=0}
+    self.augOpt.ConvertColor = 'none'
+    self.augOpt.crop = {use=false, Y=-1, X=-1, len=-1}
 
     if self.classification then
         assert(self.label_width == 1, 'expect scalar labels for classification tasks')
@@ -371,30 +555,28 @@ function DBSource:new (backend, db_path, labels_db_path, meanTensor, isTrain, sh
     return self
 end
 
--- Derived class method setCropLen
--- This method may be called in two cases:
--- * when the crop command-line parameter is used
--- * when the network definition defines a preferred crop length
-function DBSource:setCropLen(croplen)
-    self.crop = true
-    self.croplen = croplen
-
+-- Derived class method setDataAugmentation
+function DBSource:setDataAugmentation(augOpt)
     if self.train == true then
-        self.cropY = self.ImageSizeY - croplen + 1
-        self.cropX = self.ImageSizeX - croplen + 1
-    else
-        self.cropY = math.floor((self.ImageSizeY - croplen)/2) + 1
-        self.cropX = math.floor((self.ImageSizeX - croplen)/2) + 1
+        self.augOpt = augOpt -- Copy all
+        if self.augOpt.crop.use then
+            self.augOpt.crop.Y = self.ImageSizeY - self.augOpt.crop.len + 1
+            self.augOpt.crop.X = self.ImageSizeX - self.augOpt.crop.len + 1
+        end
+    else -- Validation:
+        -- For validation, only copy certain options (constructor default is no augmentation)
+        -- So we are doing very selective copying of the augmentation options
+        if augOpt.crop.use then
+            self.augOpt.crop = augOpt.crop
+            self.augOpt.crop.Y = math.floor((self.ImageSizeY - self.augOpt.crop.len)/2) + 1
+            self.augOpt.crop.X = math.floor((self.ImageSizeX - self.augOpt.crop.len)/2) + 1
+        end
     end
 end
 
--- Derived class method setDataAugmentation
-function DBSource:setDataAugmentation(augFlip, augQuadRot, augscale, augRot)
-    self.augFlip = augFlip
-    self.augQuadRot = augQuadRot
-    self.augscale = augscale
-    self.augRot = augRot
-end
+
+
+
 
 -- Derived class method inputTensorShape
 -- This returns the shape of the input samples in the database
@@ -529,8 +711,8 @@ end
 -- @parameter idx Current index within database
 function DBSource:nextBatch (batchsize, idx)
     local Images
-    if self.crop then
-        Images = torch.Tensor(batchsize, self.ImageChannels, self.croplen, self.croplen)
+    if self.augOpt.crop.use then
+        Images = torch.Tensor(batchsize, self.ImageChannels, self.augOpt.crop.len, self.augOpt.crop.len)
     else
         Images = torch.Tensor(batchsize, self.ImageChannels, self.ImageSizeY, self.ImageSizeX)
     end
@@ -556,8 +738,7 @@ function DBSource:nextBatch (batchsize, idx)
             label = label + 1
         end
 
-        Images[i] = PreProcess(y, self.mean, self.augFlip, self.augQuadRot, self.augscale, self.augRot,
-                self.crop, self.train, self.cropY, self.cropX, self.croplen)
+        Images[i] = PreProcess(y, self.train, self.mean, self.augOpt)
 
         Labels[i] = label
     end
@@ -731,26 +912,9 @@ function DataLoader:close()
     self.threadPool:specific(false)
 end
 
--- set crop length (calls setCropLen() method of all DB intances)
-function DataLoader:setCropLen(croplen)
-    -- switch to specific mode so we can specify which thread to add job to
-    self.threadPool:specific(true)
-    for i=1,self.numThreads do
-        self.threadPool:addjob(
-                    i,
-                    function()
-                        if db then
-                            db:setCropLen(croplen)
-                        end
-                    end
-                )
-    end
-    -- return to non-specific mode
-    self.threadPool:specific(false)
-end
 
 -- set dataset augmentation parameters (calls setDataAugmentation() method of all DB intances)
-function DataLoader:setDataAugmentation(augFlip, augQuadRot, augscale, augRot)
+function DataLoader:setDataAugmentation(augOpt)
     -- switch to specific mode so we can specify which thread to add job to
     self.threadPool:specific(true)
     for i=1,self.numThreads do
@@ -758,7 +922,7 @@ function DataLoader:setDataAugmentation(augFlip, augQuadRot, augscale, augRot)
                     i,
                     function()
                         if db then
-                            db:setDataAugmentation(augFlip, augQuadRot, augscale, augRot)
+                            db:setDataAugmentation(augOpt)
                         end
                     end
                 )

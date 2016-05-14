@@ -271,6 +271,22 @@ class TorchTrainTask(TrainTask):
         else:
             args.append('--augRot=0')
 
+        if self.data_aug['scale_use']:
+            args.append('--augScale=%s' % self.data_aug['scale'])
+        else:
+            args.append('--augScale=0')
+
+        if self.data_aug['hsv_use']:
+            args.append('--augHSVh=%s' % self.data_aug['hsv_h'])
+            args.append('--augHSVs=%s' % self.data_aug['hsv_s'])
+            args.append('--augHSVv=%s' % self.data_aug['hsv_v'])
+        else:
+            args.append('--augHSVh=0')
+            args.append('--augHSVs=0')
+            args.append('--augHSVv=0')
+
+        assert self.data_aug['conv_color'] in ['none', 'grayscale', 'LCS'], 'Bad or unknown flag "conv_color"'
+        args.append('--augConvertColor=%s' % self.data_aug['conv_color'])
 
         return args
 

@@ -26,7 +26,7 @@ class ImageModelForm(ModelForm):
                 ('image', 'Image'),
                 ('pixel', 'Pixel'),
                 ],
-            default='image',
+            default='none',
             tooltip = "Subtract the mean file or mean pixel for this dataset from each image."
             )
 
@@ -41,7 +41,7 @@ class ImageModelForm(ModelForm):
             tooltip = "Randomly flips each image during batch preprocessing."
             )
 
-    aug_quadrot = utils.forms.SelectField('Quadrilateral Rotation',
+    aug_quad_rot = utils.forms.SelectField('Quadrilateral Rotation',
             choices = [
                 ('none', 'None'),
                 ('rot90', '0, 90 or 270 degrees'),
@@ -61,7 +61,6 @@ class ImageModelForm(ModelForm):
             validators=[ 
                 ]
             )
-
     aug_rot = utils.forms.IntegerField(u'Rotation (+- deg)',
             default=45,
             validators=[ 
@@ -71,14 +70,66 @@ class ImageModelForm(ModelForm):
             )
 
 
+    #
+    # Arbitrary Scale
+    #
+    aug_scale_use = utils.forms.BooleanField('Random Scaling',
+            default = False,
+            tooltip = "You can augment your dataset by performing random scaling on images.",
+            validators=[ 
+                ]
+            )
+    aug_scale = utils.forms.FloatField(u'Rescale (stddev)',
+            default=0.05,
+            validators=[ 
+                validators.NumberRange(min=0, max=1)
+                ],
+            tooltip = "Retaining image size, the image is rescaled with a +-stddev of this parameter, this option makes cropping redundant."
+            )
+
+
+    #
+    # HSV Shifting
+    #
+    aug_hsv_use = utils.forms.BooleanField('HSV Shifting',
+            default = False,
+            tooltip = "You can augment your dataset by performing rotation on images.",
+            validators=[ 
+                ]
+            )
+    aug_hsv_h = utils.forms.FloatField(u'Hue',
+            default=0.01,
+            validators=[ 
+                validators.NumberRange(min=0, max=0.5)
+                ],
+            tooltip = "Standard deviation of a shift that will be performed during preprocessing."
+            )
+    aug_hsv_s = utils.forms.FloatField(u'Saturation',
+            default=0.01,
+            validators=[ 
+                validators.NumberRange(min=0, max=0.5)
+                ],
+            tooltip = "Standard deviation of a shift that will be performed during preprocessing."
+            )
+    aug_hsv_v = utils.forms.FloatField(u'Value',
+            default=0.01,
+            validators=[ 
+                validators.NumberRange(min=0, max=0.5)
+                ],
+            tooltip = "Standard deviation of a shift that will be performed during preprocessing."
+            )
 
 
 
-
-
-
-
-
+    aug_conv_color = utils.forms.SelectField('Colorspace Conversion',
+            choices = [
+                ('none', 'None'),
+                ('grayscale', 'Grayscale (Y)'),
+                ('LCS', 'Local Contrast Normalization'),
+                ],
+            default='none',
+            tooltip = "Changes the color space during preprocessing. Note that this might change the amount of input channels!"
+            )
 
 
 

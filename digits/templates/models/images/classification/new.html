@@ -19,7 +19,14 @@ New Image Classification Model
     <h1>New Image Classification Model</h1>
 </div>
 
-<form id="model-form" action="{{url_for('digits.model.images.classification.views.create')}}" enctype="multipart/form-data" method="post">
+<script>
+function syncAceEditor(){
+    // Syncs (copies) the ace editor's contents to the custom_network
+    $("textarea#custom_network").val(editor.getValue());
+}
+</script>
+
+<form onsubmit="syncAceEditor();" id="model-form" action="{{url_for('digits.model.images.classification.views.create')}}" enctype="multipart/form-data" method="post">
     {{ form.hidden_tag() }}
 
     {{ print_errors(form) }}
@@ -31,9 +38,9 @@ New Image Classification Model
                     {{form.dataset.label}}
                     {{form.dataset.tooltip}}
                     {{form.dataset(class='form-control', size=5)}}
+                    <div id="dataset-summary"></div>
                 </div>
             </div>
-
             <div class="col">
                 <div class="well">
                     <h4 style="display:inline-block;">Python Layers</h4>
@@ -94,66 +101,9 @@ $("#dataset").change(function() {
     });
 $("#dataset").change();
         </script>
-        <div class="col-sm-4">
-            <div id="dataset-summary">
-            </div>
-        </div>
-        <div class="col-sm-4">
-            <div class="well">
-                <h4>Data Transformations</h4>
-                <div class="form-group{{mark_errors([form.crop_size])}}">
-                    {{form.crop_size.label}}
-                    {{form.crop_size.tooltip}}
-                    {{form.crop_size(class='form-control', placeholder='none')}}
-                </div>
-                <div class="form-group{{mark_errors([form.use_mean])}}">
-                    {{form.use_mean.label}}
-                    {{form.use_mean.tooltip}}
-                    {{form.use_mean(class='form-control')}}
-                </div>
-                <div class="form-group{{mark_errors([form.aug_flip])}}">
-                    {{form.aug_flip.label}}
-                    {{form.aug_flip.tooltip}}
-                    {{form.aug_flip(class='form-control')}}
-                </div>
-                <div class="form-group{{mark_errors([form.aug_quadrot])}}">
-                    {{form.aug_quadrot.label}}
-                    {{form.aug_quadrot.tooltip}}
-                    {{form.aug_quadrot(class='form-control')}}
-                </div>
 
-                {{form.aug_rot_use}}
-                {{form.aug_rot_use.label}}
-                {{form.aug_rot_use.tooltip}} 
-                <div class="row cl-augmentation-rotation">
-                    <div class="form-group col-sm-6{{ ' has-error' if form.aug_rot.errors else '' }}">
-                        {{ form.aug_rot.label }}
-                        {{ form.aug_rot(class='form-control') }}
-                    </div>
-                </div>
-<script>
-function hasAugmentationRotationChanged() {
-    if ($("#aug_rot_use").prop("checked"))
-    {
-        $(".cl-augmentation-rotation").show();
-    }
-    else
-    {
-        $(".cl-augmentation-rotation").hide();
-    }
-}
-$("#aug_rot_use").click(hasAugmentationRotationChanged);
-hasAugmentationRotationChanged();
-</script>
 
-            </div>
-        </div>
-    </div>
-
-    <hr>
-
-    <div class="row">
-        <div class="col-sm-4">
+<div class="col-sm-4">
             <div class="well">
                 <h4>Solver Options</h4>
 
@@ -396,7 +346,126 @@ showHideAdvancedLROptions();
                 </div>
             </div>
         </div>
-        <div class="col-sm-8">
+
+        <div class="col-sm-4">
+            <div class="well">
+                <h4>Data Transformations</h4>
+                <div class="form-group{{mark_errors([form.use_mean])}}">
+                    {{form.use_mean.label}}
+                    {{form.use_mean.tooltip}}
+                    {{form.use_mean(class='form-control')}}
+                </div>
+
+                <h4>Data Augmentations</h4>
+                <div class="form-group{{mark_errors([form.crop_size])}}">
+                    {{form.crop_size.label}}
+                    {{form.crop_size.tooltip}}
+                    {{form.crop_size(class='form-control', placeholder='none')}}
+                </div>
+                <div class="form-group{{mark_errors([form.aug_flip])}}">
+                    {{form.aug_flip.label}}
+                    {{form.aug_flip.tooltip}}
+                    {{form.aug_flip(class='form-control')}}
+                </div>
+                <div class="form-group{{mark_errors([form.aug_quad_rot])}}">
+                    {{form.aug_quad_rot.label}}
+                    {{form.aug_quad_rot.tooltip}}
+                    {{form.aug_quad_rot(class='form-control')}}
+                </div>
+
+                <div>
+                    {{form.aug_rot_use}}
+                    {{form.aug_rot_use.label}}
+                    {{form.aug_rot_use.tooltip}} 
+                    <div class="row cl-augmentation-rotation">
+                        <div class="form-group col-sm-6{{ ' has-error' if form.aug_rot.errors else '' }}">
+                            {{ form.aug_rot.label }}
+                            {{ form.aug_rot(class='form-control') }}
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    {{form.aug_scale_use}}
+                    {{form.aug_scale_use.label}}
+                    {{form.aug_scale_use.tooltip}} 
+                    <div class="row cl-augmentation-scale">
+                        <div class="form-group col-sm-6{{ ' has-error' if form.aug_scale.errors else '' }}">
+                            {{ form.aug_scale.label }}
+                            {{ form.aug_scale(class='form-control') }}
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    {{form.aug_hsv_use}}
+                    {{form.aug_hsv_use.label}}
+                    {{form.aug_hsv_use.tooltip}} 
+                    <div class="row cl-augmentation-hsv">
+                        <div class="form-group col-sm-4{{ ' has-error' if form.aug_hsv_h.errors else '' }}">
+                            {{ form.aug_hsv_h.label }}
+                            {{ form.aug_hsv_h(class='form-control') }}
+                        </div>
+
+                        <div class="form-group col-sm-4{{ ' has-error' if form.aug_hsv_s.errors else '' }}">
+                            {{ form.aug_hsv_s.label }}
+                            {{ form.aug_hsv_s(class='form-control') }}
+                        </div>
+                   
+                        <div class="form-group col-sm-4{{ ' has-error' if form.aug_hsv_v.errors else '' }}">
+                            {{ form.aug_hsv_v.label }}
+                            {{ form.aug_hsv_v(class='form-control') }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group{{mark_errors([form.aug_conv_color])}}">
+                    {{form.aug_conv_color.label}}
+                    {{form.aug_conv_color.tooltip}}
+                    {{form.aug_conv_color(class='form-control')}}
+                </div>
+
+<script>
+function hasAugmentationRotationChanged() {
+    if ($("#aug_rot_use").prop("checked")) {
+        $(".cl-augmentation-rotation").show();
+    } else {
+        $(".cl-augmentation-rotation").hide();
+    }
+}
+$("#aug_rot_use").click(hasAugmentationRotationChanged);
+hasAugmentationRotationChanged();
+
+function hasAugmentationScaleChanged() {
+    if ($("#aug_scale_use").prop("checked")){
+        $(".cl-augmentation-scale").show();
+    } else {
+        $(".cl-augmentation-scale").hide();
+    }
+}
+$("#aug_scale_use").click(hasAugmentationScaleChanged);
+hasAugmentationScaleChanged();
+
+function hasAugmentationHsvChanged() {
+    if ($("#aug_hsv_use").prop("checked")){
+        $(".cl-augmentation-hsv").show();
+    } else {
+        $(".cl-augmentation-hsv").hide();
+    }
+}
+$("#aug_hsv_use").click(hasAugmentationHsvChanged);
+hasAugmentationHsvChanged();
+</script>
+
+            </div>
+        </div>
+    </div>
+
+    <hr>
+
+    <div class="row">
+        
+        <div class="col-sm-12">
             <script>
 function customizeNetwork(network, snapshot_list, framework) {
     function fillCustomTab(network, snapshot_list, framework) {
@@ -412,6 +481,7 @@ function customizeNetwork(network, snapshot_list, framework) {
         .done(function(data) {
                 data = $.parseJSON(data);
                 $('textarea[name=custom_network]').val(data['network']);
+                editor.setValue(data['network']);
                 if (data['snapshot'])
                     $('input[name=custom_network_snapshot]').val(data['snapshot']);
                 else
@@ -419,6 +489,7 @@ function customizeNetwork(network, snapshot_list, framework) {
                 })
         .fail(function(data) {
                 $('textarea[name=custom_network]').val('');
+                //editor.setValue('');
                 $('input[name=custom_network_snapshot]').val('');
                 errorAlert(data);
                 });
@@ -428,7 +499,9 @@ function customizeNetwork(network, snapshot_list, framework) {
     if (!framework)
         var $tab = $('#stdnetRole'), $active = $tab.find('.active'), framework = $active.attr('id');
 
-    if ($('textarea[name=custom_network]').val() != "") {
+    //if ($('textarea[name=custom_network]').val() != "") {
+    if (editor.getValue() != "") {
+        
         bootbox.confirm(
                 'This will overwrite data in the Custom Network tab. Continue?',
                 function(result) { if (result) fillCustomTab(network, snapshot_list, framework); }
@@ -449,6 +522,7 @@ frameworks['{{ fw.get_id() }}'] = framework;
 
 function setFramework(fwid)
 {
+    var fwid_now = fwid;
     $('#framework').val(fwid);
     if (frameworks[fwid].can_shuffle)
         $("#shuffle-data").show();
@@ -461,22 +535,26 @@ function setFramework(fwid)
         $("select[name=solver_type] > option:selected").prop("selected", false);
     }
 
-    if (fwid == 'torch')
+    if (fwid == 'torch'){
         $("#torch-warning").show();
-    else
+        editor.session.setMode(new LuaMode());
+    } else {
         $("#torch-warning").hide();
+        editor.session.setMode(new PythonMode());
+    }
     $('#stdnetRole a[href="'+"#"+fwid+"_standard"+'"]').tab('show');
     $('#customFramework a[href="'+"#"+fwid+"_custom"+'"]').tab('show');
 }
             </script>
 
-            <div id="torch-warning" class="alert alert-warning" style="display:none;">
+            <!---<div id="torch-warning" class="alert alert-warning" style="display:none;">
                 <b>NOTE:</b> Torch7 is currently supported as an experimental feature in DIGITS. The following limitation applies:
                 <ul>
                     <li>Models don't automatically adjust to images with different sizes</li>
                     <li>Fine tuning from multiple pre-trained models is not supported</li>
                 </ul>
             </div>
+            -->
             <ul class="nav nav-tabs" id="network-tabs">
                 <li class="active"><a href="#network-tab-standard" data-toggle="tab">Standard Networks</a></li>
                 <li><a href="#network-tab-previous" data-toggle="tab">Previous Networks</a></li>
@@ -657,8 +735,13 @@ function setFramework(fwid)
 
                             });
 
+
 function visualizeNetwork() {
     framework = $('#framework').val();
+
+    // Sync ace editor to custom_network editor
+    syncAceEditor();
+
     $.ajax("{{url_for('digits.model.views.visualize_network')}}?framework="+framework,
         {
             type: "POST",
@@ -681,13 +764,31 @@ function visualizeNetwork() {
 
                                 <div class="form-group{{mark_errors([form.custom_network])}}">
                                     {{form.custom_network.label}}
-                                    {{form.custom_network.explanation(file='/models/images/classification/custom_network_explanation.html')}}
-                                    <div class="pull-right">
-                                        <a href=# class="btn btn-info" onClick="return visualizeNetwork();">Visualize</a>
-                                    </div>
-                                    {{form.custom_network(class='form-control', rows=10)}}
+                                    {{form.custom_network.explanation(file='/models/images/classification/custom_network_explanation.html')}}   
+
+                                    <div id="divCheckbox" style="display: none;">{{form.custom_network(class='form-control', rows=10)}}</div>
+                                    <a href=# class="btn btn-info" onClick="return visualizeNetwork();">Visualize</a>
+                                    
                                 </div>
                         </div>
+
+                        <div id="editor"></div>
+
+<script>
+    var editor = ace.edit("editor");
+    editor.setTheme("ace/theme/monokai");
+    editor.session.setFoldStyle('manual');
+    editor.setShowPrintMargin(false);
+    var PythonMode = ace.require("ace/mode/python").Mode;
+    var LuaMode = ace.require("ace/mode/lua").Mode;
+
+    $( document ).ready(function() {
+        editor.setValue($('textarea#custom_network').val());
+        editor.setValue(editor.getValue(), 1);
+    });
+</script>
+
+
                         <script>$(this).addClass('active');
                             $('#custom_textareas div:first').addClass('tab-pane active') // Select first tab
                         </script>

@@ -1,5 +1,13 @@
 /* Copyright (c) 2014-2016, NVIDIA CORPORATION.  All rights reserved. */
 
+#editor {
+    position: relative;
+    height: 600px;
+    border-radius: 5px;
+    margin-top:10px;
+    margin-bottom:10px;
+}
+
 body {
     padding-top: 50px;
     padding-bottom: 50px;
@@ -22,6 +30,16 @@ div.progress div.progress-bar {
 path.c3-line {
     stroke-width: 2px;
 }
+
+ #custom_network_snapshot, #dataset_name{
+    font-family: monospace;
+    font-size: 12px;
+}
+
+#folder_train, #folder_val, #folder_test, #model_name, #select_gpus, #dataset{
+    font-family: monospace;
+}
+
 
 .autocomplete-suggestions { border: 1px solid #999; background: #FFF; overflow: auto; }
 .autocomplete-suggestion { padding: 2px 5px; white-space: nowrap; overflow: visible; }

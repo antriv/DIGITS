@@ -21,18 +21,14 @@ require 'logmessage'
 local utils = require 'utils'
 ----------------------------------------------------------------------
 
---  -g,--mirror (default no) If this option is 'yes', then some of the images are randomly mirrored
-
 opt = lapp[[
 Usage details:
--a,--threads            (default 8)              number of threads
+-a,--threads            (default 4)              number of threads
 -b,--batchSize (default 0) batch size
 -c,--learningRateDecay (default 1e-6) learning rate decay (in # samples)
 -e,--epoch (default 1) number of epochs to train -1 for unbounded
 -f,--shuffle (default no) shuffle records before train
 -i,--interval (default 1) number of train epochs to complete, to perform one validation
--k,--crop (default no) If this option is 'yes', all the images are randomly cropped into square image. And croplength is provided as --croplen parameter
--l,--croplen (default 0) crop length. This is required parameter when crop option is provided
 -m,--momentum (default 0.9) momentum
 -n,--network (string) Model - must return valid network. Available - {lenet, googlenet, alexnet}
 -o,--optimization (default sgd) optimization method
@@ -43,10 +39,20 @@ Usage details:
 -v,--validation (default '') location in which validation db exists.
 -w,--weightDecay (default 1e-4) L2 penalty on the weights
 
+-k,--crop (default no) If this option is 'yes', all the images are randomly cropped into square image. And croplength is provided as --croplen parameter
+-l,--croplen (default 0) crop length. This is required parameter when crop option is provided
+
+--mean (default '') mean image file.
+--subtractMean (default 'image') Select mean subtraction method. Possible values are 'image', 'pixel' or 'none'.
+
 --augFlip (default none) options {none, fliplr, flipud, fliplrud}
 --augQuadRot (default none) options {none, rot90, rot180, rotall}
 --augRot(default 0) arbitrary rotation (input in degrees ±)
---augscale (default 0.0) Random scaling ± this parameter
+--augScale (default 0.0) Stddev of Gaussian randomization  of Scale
+--augHSVh (default 0.0) Stddev of Gaussian randomization of Hue
+--augHSVs (default 0.0) Stddev of Gaussian randomization of Saturation
+--augHSVv (default 0.0) Stddev of Gaussian randomization of Value
+--augConvertColor (default none) options can be: 'grayscale' 'lcn'
 
 --train_labels (default '') location in which train labels db exists. Optional, use this if train db does not contain target labels.
 --validation_labels (default '') location in which validation labels db exists. Optional, use this if validation db does not contain target labels.
@@ -58,8 +64,6 @@ Usage details:
 --randomState (default '') Specifies path to a random number state to reload from
 --lrpolicyState (default '') Specifies path to a lrpolicy state to reload from
 --networkDirectory (default '') directory in which network exists
---mean (default '') mean image file.
---subtractMean (default 'image') Select mean subtraction method. Possible values are 'image', 'pixel' or 'none'.
 --labels (default '') file contains label definitions
 --snapshotPrefix (default '') prefix of the weights/snapshots
 --snapshotInterval (default 1) specifies the training epochs to be completed before taking a snapshot
@@ -104,8 +108,6 @@ COMPUTE_TRAIN_ACCURACY = false
 opt.crop = opt.crop == 'yes' or false
 opt.shuffle = opt.shuffle == 'yes' or false
 opt.visualizeModel = opt.visualizeModel == 'yes' or false
-
-logmessage.display(0, 'opt.subtractMean:' .. opt.subtractMean .. ' opt.augFlip:'.. opt.augFlip ..' opt.augQuadRot:' .. opt.augQuadRot .. ' opt.augRot:' .. opt.augRot)
 
 -- Set the seed of the random number generator to the given number.
 if opt.seed ~= '' then
@@ -416,23 +418,41 @@ if lfs.mkdir(paths.concat(opt.save)) then
 end
 
 -- validate "crop length" input parameter
-if opt.crop and inputTensorShape then
-    -- make sure crop length is not bigger than image height or width
-    opt.croplen = math.min(opt.croplen, inputTensorShape[2], inputTensorShape[3])
-    -- set crop length in data readers
-    trainDataLoader:setCropLen(opt.croplen)
-    if valDataLoader then
-        valDataLoader:setCropLen(opt.croplen)
-    end
-end
-
--- Augmentation parameters
-trainDataLoader:setDataAugmentation(opt.augFlip, opt.augQuadRot, opt.augscale, opt.augRot)
--- Note: no data augmentation for the validation set!
---if valDataLoader then
---    valDataLoader:setDataAugmentation(opt.augFlip, opt.augQuadRot, opt.augscale, opt.augRot)
+--if opt.crop and inputTensorShape then
+--    -- make sure crop length is not bigger than image height or width
+--    opt.croplen = math.min(opt.croplen, inputTensorShape[2], inputTensorShape[3])
+--    -- set crop length in data readers
+--    trainDataLoader:setCropLen(opt.croplen)
+--    if valDataLoader then
+--        valDataLoader:setCropLen(opt.croplen)
+--    end
 --end
+--
+---- Augmentation parameters
+--trainDataLoader:setDataAugmentation(opt.augFlip, opt.augQuadRot, opt.augScale, opt.augRot)
 
+
+
+
+-- Set up augmentation options
+augOpt = { augFlip = opt.augFlip,
+           augQuadRot = opt.augQuadRot,
+           augRot = opt.augRot,
+           augScale = opt.augScale,
+           augHSV = {H=opt.augHSVh, S=opt.augHSVs, V=opt.augHSVv},
+           ConvertColor = opt.augConvertColor,
+           crop = {use=opt.crop, Y=-1, X=-1, len=opt.croplen},
+         }
+
+print(augOpt)
+logmessage.display(0, 'augOpt:' .. table.concat(augOpt))
+
+
+trainDataLoader:setDataAugmentation(augOpt)
+if valDataLoader then
+    -- The valDataLoader will automatically nullify certain augmentation options
+    valDataLoader:setDataAugmentation(augOpt)
+end
 
 
 

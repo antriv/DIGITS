@@ -199,10 +199,17 @@ def create():
 
             # Set up augmentation structure
             data_aug = {}
-            data_aug['flip']     = form.aug_flip.data
-            data_aug['quad_rot'] = form.aug_quadrot.data
-            data_aug['rot_use']  = form.aug_rot_use.data
-            data_aug['rot']      = form.aug_rot.data
+            data_aug['flip']       = form.aug_flip.data
+            data_aug['quad_rot']   = form.aug_quad_rot.data
+            data_aug['rot_use']    = form.aug_rot_use.data
+            data_aug['rot']        = form.aug_rot.data
+            data_aug['scale_use']  = form.aug_scale_use.data
+            data_aug['scale']      = form.aug_scale.data
+            data_aug['hsv_use']    = form.aug_hsv_use.data
+            data_aug['hsv_h']      = form.aug_hsv_h.data
+            data_aug['hsv_s']      = form.aug_hsv_s.data
+            data_aug['hsv_v']      = form.aug_hsv_v.data
+            data_aug['conv_color'] = form.aug_conv_color.data
 
             # Python Layer File may be on the server or copied from the client.
             fs.copy_python_layer_file(

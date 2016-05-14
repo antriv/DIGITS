@@ -86,10 +86,14 @@ def new():
 @utils.auth.requires_login(redirect=False)
 def create():
     """
-    Create a new ImageClassificationModelJob
+    Create a new ImageClassificationModelJob (f.e. after pressing the Create button)
 
     Returns JSON when requested: {job_id,name,status} or {errors:[]}
     """
+    print('create!')
+    print('flask.request.form:')
+    print(flask.request.form)
+
     form = ImageClassificationModelForm()
     form.dataset.choices = get_datasets()
     form.standard_networks.choices = get_standard_networks()
@@ -197,7 +201,12 @@ def create():
                         break
 
             elif form.method.data == 'custom':
+                print('form.custom_network:')
+                print(form.custom_network)
+                print('form.custom_network.data:')
+                print(form.custom_network.data)
                 network = fw.get_network_from_desc(form.custom_network.data)
+                print('y')
                 pretrained_model = form.custom_network_snapshot.data.strip()
             else:
                 raise werkzeug.exceptions.BadRequest(
@@ -246,10 +255,17 @@ def create():
 
             # Set up augmentation structure
             data_aug = {}
-            data_aug['flip']     = form.aug_flip.data
-            data_aug['quad_rot'] = form.aug_quadrot.data
-            data_aug['rot_use']  = form.aug_rot_use.data
-            data_aug['rot']      = form.aug_rot.data
+            data_aug['flip']       = form.aug_flip.data
+            data_aug['quad_rot']   = form.aug_quad_rot.data
+            data_aug['rot_use']    = form.aug_rot_use.data
+            data_aug['rot']        = form.aug_rot.data
+            data_aug['scale_use']  = form.aug_scale_use.data
+            data_aug['scale']      = form.aug_scale.data
+            data_aug['hsv_use']    = form.aug_hsv_use.data
+            data_aug['hsv_h']      = form.aug_hsv_h.data
+            data_aug['hsv_s']      = form.aug_hsv_s.data
+            data_aug['hsv_v']      = form.aug_hsv_v.data
+            data_aug['conv_color'] = form.aug_conv_color.data
 
             # Python Layer File may be on the server or copied from the client.
             fs.copy_python_layer_file(
