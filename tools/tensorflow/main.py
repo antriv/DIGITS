@@ -51,8 +51,8 @@ DEFAULT_BATCH_SIZE = 16
 # TIM'S OVERRIDES:
 FLAGS.labels = "/Users/tzaman/Desktop/20160203-153604-2bf4/labels.txt"
 FLAGS.networkDirectory = "../../digits/standard-networks/tensorflow"
-FLAGS.network = "lenet_slim.py"
-#FLAGS.network = "lenet.py"
+#FLAGS.network = "lenet_slim.py"
+FLAGS.network = "lenet.py"
 FLAGS.train = "/Users/tzaman/Desktop/20160203-153604-2bf4/train_db"
 FLAGS.validation = "/Users/tzaman/Desktop/20160203-153604-2bf4/val_db"
 FLAGS.summaries_dir = "/tmp/tb/"
@@ -150,7 +150,7 @@ exec(open(os.path.join(FLAGS.networkDirectory, FLAGS.network)).read(), globals()
 
 model_params= {
     'x' : x, # Input Tensor
-    'y' : y, # Output Tensor
+    'y' : y, # Output Tensor (Truth)
     'nclasses' : nclasses, 
     'input_shape' : input_tensor_shape, 
     'ngpus' : ngpus
@@ -169,17 +169,18 @@ if not network.has_key('feed_dict_val'):
     network['feed_dict_val'] = {}
 
 # Evaluate model
-correct_pred = tf.equal(tf.argmax(network['model'], 1), tf.argmax(y, 1))
+correct_pred = tf.equal(tf.argmax(network['model'], 1), tf.argmax(y, 1)) # Equal equates to boolean. Argmax gets the index of the max.
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
 # Create the optimizer
+#optimizer = tf.train.GradientDescentOptimizer(0.01).minimize(network['cost'])
+#optimizer = tf.train.GradientDescentOptimizer(learning_rate=lr).minimize(network['cost']) # You can now add `feed_dict={learning_rate: 0.1}`
 optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learningRate).minimize(network['cost'])
 #lr = tf.train.exponential_decay(0.001, #initial_learning_rate
 #                                0,
 #                                500,
 #                                0.16, # learning_rate_decay_factor
 #                                staircase=True)
-#optimizer = tf.train.GradientDescentOptimizer(learning_rate=lr).minimize(network['cost']) # You can now add `feed_dict={learning_rate: 0.1}`
 # Decay the learning rate exponentially based on the number of steps.
 #lr = tf.train.exponential_decay(0.1, #initial_learning_rate
 #                                FLAGS.epoch*train_data_loader.total,
@@ -232,34 +233,32 @@ logging.info("Model weights will be saved as " + snapshot_prefix + "_<EPOCH>_Mod
 # TensorBoard
 with tf.name_scope('tims_tower') as scope:
     summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
-summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
-# Add histograms for trainable variables.
-for var in tf.trainable_variables():
-    summaries.append(tf.histogram_summary(var.op.name, var))
-# Add a summary to track the learning rate.
-#summaries.append(tf.scalar_summary('learning_rate', lr))
-summary_op = tf.merge_summary(summaries)
 
+    # Add histograms for trainable variables.
+    for var in tf.trainable_variables():
+        summaries.append(tf.histogram_summary(var.op.name, var))
+    # Add a summary to track the learning rate.
+    #summaries.append(tf.scalar_summary('learning_rate', lr))
+
+    summaries.append(tf.scalar_summary('loss', network['cost']))
+    summaries.append(tf.scalar_summary('accuracy', accuracy))
 
 # Saver to save all variables
 saver = tf.train.Saver() 
-#
+
+#TODO: Restore/finetune option:
 #saver.restore(sess, ckpt.model_checkpoint_path)
 
 
 # Launch the graph
 with tf.Session() as sess:
-    summary_writer = tf.train.SummaryWriter(FLAGS.summaries_dir)
+    # Tensorboard: Merge all the summaries and write them out to /tmp/mnist_logs (by default)
+    summary_op = tf.merge_summary(summaries)
+    writer_train = tf.train.SummaryWriter(os.path.join(FLAGS.summaries_dir, 'train'), sess.graph)
+    writer_val = tf.train.SummaryWriter(os.path.join(FLAGS.summaries_dir, 'val'), sess.graph)
 
     # Initialize
     init = tf.initialize_all_variables().run()
-
-
-
-    # Tensorboard: Merge all the summaries and write them out to /tmp/mnist_logs (by default)
-    #merged = tf.merge_all_summaries()
-    #writer_train = tf.train.SummaryWriter(FLAGS.summaries_dir + '/train', sess.graph)
-    #writer_val = tf.train.SummaryWriter(FLAGS.summaries_dir + '/val')
 
     for epoch in xrange(0,FLAGS.epoch):
         data_loader_index = 0
@@ -274,50 +273,43 @@ with tf.Session() as sess:
             # Update for next batch start index
             data_loader_index = data_loader_index + data_batch_size
             
-            
             logged_since_last_check = logged_since_last_check + data_batch_size
 
             current_epoch = epoch + round(float(t)/train_data_loader.total, epoch_round)
 
+            # Backward pass
+            _, loss, acc, summary_str = sess.run([optimizer, network['cost'], accuracy, summary_op], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_train'].items()))
+            writer_train.add_summary(summary_str, t+epoch*train_data_loader.total)
+            if np.isnan(loss):
+                logging.error('Model diverged with loss = NaN')
+                exit(-1)
+
             # Start with a forward pass
             if (t==0) or (logged_since_last_check>=logging_check_interval):
-                logged_since_last_check = 0
-                # Forward pass #TODO run this always..
-                loss, acc = sess.run([network['cost'], accuracy], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_val'].items() ))
-                if np.isnan(loss):
-                    logging.info('Model diverged with loss = NaN')
-                    exit(-1)
-
-                #writer_train.add_summary(loss, current_epoch)
+                logged_since_last_check = t
+                #TODO: report average loss and acc since last check?
                 logging.info("Training (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(loss) + ", lr = " + str(1337)  + ", accuracy = " + "{:.5f}".format(acc) )            
-
-            # Backward pass
-            sess.run(optimizer, feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_train'].items()))
-
-            if (t%100==0):
-                # TensorBoard:
-                summary_str = sess.run(summary_op)
-                summary_writer.add_summary(summary_str, current_epoch)
-
-            # The backward pass is completed, and we update the current epoch
-            t = t + data_batch_size
-            current_epoch = epoch + round(float(t)/train_data_loader.total, epoch_round)
 
             # Validation Pass
             if FLAGS.validation and current_epoch >= next_validation:
-                #TODO: Validation()
+                #TODO: Validation() in a function
                 loss_cum_val = 0
                 acc_cum_val = 0
                 t_v = 0
+                num_batches = 0
                 while t_v < val_data_loader.total:
                     data_batch_size_v = min(val_data_loader.total-t_v, batch_size_val)
                     batch_x, batch_y = val_data_loader.next_batch(data_batch_size_v, t_v)
-                    loss, acc = sess.run([network['cost'], accuracy], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_val'].items() ))
-                    #loss_cum_val = loss_cum_val + loss #TODO: loss doesnt seem to be correlated to batch size???
-                    acc_cum_val = acc_cum_val + (acc * data_batch_size_v)
+                    loss, acc, summary_str = sess.run([network['cost'], accuracy, summary_op], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_val'].items()))
+                    loss_cum_val = loss_cum_val + loss
+                    acc_cum_val = acc_cum_val + (acc * data_batch_size_v) #TODO: obtain this from a confmat struct-ish thing
                     t_v = t_v + data_batch_size_v
+                    num_batches = num_batches + 1
 
-                logging.info("Validation (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(float(loss_cum_val)/val_data_loader.total) + ", accuracy = " + "{:.5f}".format(acc_cum_val/val_data_loader.total) )
+                total_avg_loss = float(loss_cum_val)/num_batches
+
+                #writer_val.add_summary(summary_str, t+epoch*train_data_loader.total)
+                logging.info("Validation (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(total_avg_loss) + ", accuracy = " + "{:.5f}".format(acc_cum_val/val_data_loader.total) )
 
 
 
@@ -337,6 +329,10 @@ with tf.Session() as sess:
                 next_snapshot_save = (round(float(current_epoch)/FLAGS.snapshotInterval) + 1) * FLAGS.snapshotInterval 
                 last_snapshot_save_epoch = current_epoch
 
+            # The backward pass is completed, and we update the current epoch
+            t = t + data_batch_size
+
+    # We do not need to sess.close() because we've used a with block
 
 
             

@@ -10,8 +10,7 @@ def build_model(params):
 
     def maxpool2d(x, k=2):
         # MaxPool2D wrapper
-        return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1],
-                              padding='VALID')
+        return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='VALID')
 
     # Create model
     def conv_net(x, weights, biases, dropout):
