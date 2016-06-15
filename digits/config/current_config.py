@@ -8,6 +8,7 @@ from .jobs_dir import JobsDirOption
 from .log_file import LogFileOption
 from .log_level import LogLevelOption
 from .torch_option import TorchOption
+from .tensorflow_option import TensorflowOption
 from .server_name import ServerNameOption
 from .secret_key import SecretKeyOption
 
@@ -28,6 +29,7 @@ def reset():
             SecretKeyOption(),
             CaffeOption(),
             TorchOption(),
+            TensorflowOption(),
             DataExtensionListOption(),
             ViewExtensionListOption(),
             ]

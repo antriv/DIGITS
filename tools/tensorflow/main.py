@@ -32,21 +32,25 @@ tf.app.flags.DEFINE_string('labels', '', """File containing label definitions"""
 tf.app.flags.DEFINE_float('learningRate', '0.001', """Learning Rate""")
 tf.app.flags.DEFINE_string('network', '', """File containing network (model)""")
 tf.app.flags.DEFINE_string('networkDirectory', '', """Directory in which network exists""")
+tf.app.flags.DEFINE_string('optimization', 'adam', """Optimization method""") #@TODO: set 'sgd' as default
+#tf.app.flags.DEFINE_string('policy', '', """Learning Rate Policy""")
 tf.app.flags.DEFINE_string('save', 'results', """Save directory""")
 tf.app.flags.DEFINE_string('seed', '', """Fixed input seed for repeatable experiments""")
 tf.app.flags.DEFINE_boolean('shuffle', False, """Shuffle records before training""")
-tf.app.flags.DEFINE_integer('snapshotInterval', 1, """Specifies the training epochs to be completed before taking a snapshot""")
+tf.app.flags.DEFINE_integer('snapshotInterval', 1.0, """Specifies the training epochs to be completed before taking a snapshot""")
 tf.app.flags.DEFINE_string('snapshotPrefix', '', """Prefix of the weights/snapshots""")
 tf.app.flags.DEFINE_string('train', '', """Directory with training db""")
 tf.app.flags.DEFINE_string('validation', '', """Directory with validation db""")
 
+
+
+
+
+# Tensorflow-unique arguments for DIGITS
 tf.app.flags.DEFINE_string('summaries_dir', '', """Directory of Tensorboard Summaries (logdir)""")
-
-
 
 # Constants
 DEFAULT_BATCH_SIZE = 16
-
 
 # TIM'S OVERRIDES:
 FLAGS.labels = "/Users/tzaman/Desktop/20160203-153604-2bf4/labels.txt"
@@ -109,8 +113,7 @@ if FLAGS.crop and input_tensor_shape:
     input_tensor_shape[0] = FLAGS.croplen
     input_tensor_shape[1] = FLAGS.croplen
 
-
-if FLAGS.dbbackend is not 'lmdb':
+if FLAGS.dbbackend != 'lmdb':
     logging.error("Currently only the LMDB data backend is supported")
     exit(-1)
 
@@ -146,7 +149,8 @@ else :
 y = tf.placeholder(tf.float32, [None, nclasses])
 
 # Import the network file
-exec(open(os.path.join(FLAGS.networkDirectory, FLAGS.network)).read(), globals())
+path_network = os.path.join(os.path.dirname(os.path.realpath(__file__)), FLAGS.networkDirectory, FLAGS.network)
+exec(open(path_network).read(), globals())
 
 model_params= {
     'x' : x, # Input Tensor
@@ -175,7 +179,13 @@ accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 # Create the optimizer
 #optimizer = tf.train.GradientDescentOptimizer(0.01).minimize(network['cost'])
 #optimizer = tf.train.GradientDescentOptimizer(learning_rate=lr).minimize(network['cost']) # You can now add `feed_dict={learning_rate: 0.1}`
-optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learningRate).minimize(network['cost'])
+
+if FLAGS.optimization == 'adam':
+    optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learningRate).minimize(network['cost'])
+else:
+    logging.error("Invalid optimization flag (" +  FLAGS.optimization + ")")
+    exit(-1)
+
 #lr = tf.train.exponential_decay(0.001, #initial_learning_rate
 #                                0,
 #                                500,
@@ -263,9 +273,9 @@ with tf.Session() as sess:
     for epoch in xrange(0,FLAGS.epoch):
         data_loader_index = 0
         t = 0
-        logged_since_last_check = 0
+        logged_since_last_check = 0 # Amount of images logged since last logging
         while t < train_data_loader.total:
-
+            step = t+epoch*train_data_loader.total # Usage of steps seems a TensorFlow convention
             data_batch_size = min(train_data_loader.total-data_loader_index, batch_size_train)
 
             batch_x, batch_y = train_data_loader.next_batch(data_batch_size, data_loader_index)
@@ -279,14 +289,14 @@ with tf.Session() as sess:
 
             # Backward pass
             _, loss, acc, summary_str = sess.run([optimizer, network['cost'], accuracy, summary_op], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_train'].items()))
-            writer_train.add_summary(summary_str, t+epoch*train_data_loader.total)
+            writer_train.add_summary(summary_str, step)
             if np.isnan(loss):
                 logging.error('Model diverged with loss = NaN')
                 exit(-1)
 
             # Start with a forward pass
             if (t==0) or (logged_since_last_check>=logging_check_interval):
-                logged_since_last_check = t
+                logged_since_last_check = 0
                 #TODO: report average loss and acc since last check?
                 logging.info("Training (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(loss) + ", lr = " + str(1337)  + ", accuracy = " + "{:.5f}".format(acc) )            
 
@@ -301,6 +311,7 @@ with tf.Session() as sess:
                     data_batch_size_v = min(val_data_loader.total-t_v, batch_size_val)
                     batch_x, batch_y = val_data_loader.next_batch(data_batch_size_v, t_v)
                     loss, acc, summary_str = sess.run([network['cost'], accuracy, summary_op], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_val'].items()))
+                    writer_val.add_summary(summary_str, step)
                     loss_cum_val = loss_cum_val + loss
                     acc_cum_val = acc_cum_val + (acc * data_batch_size_v) #TODO: obtain this from a confmat struct-ish thing
                     t_v = t_v + data_batch_size_v
@@ -308,7 +319,7 @@ with tf.Session() as sess:
 
                 total_avg_loss = float(loss_cum_val)/num_batches
 
-                #writer_val.add_summary(summary_str, t+epoch*train_data_loader.total)
+                
                 logging.info("Validation (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(total_avg_loss) + ", accuracy = " + "{:.5f}".format(acc_cum_val/val_data_loader.total) )
 
 
