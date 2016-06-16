@@ -279,20 +279,24 @@ class TensorflowTrainTask(TrainTask):
 
         float_exp = '([-]?Inf|NaN|[-+]?[0-9]*\.?[0-9]+(e[-+]?[0-9]+)?)'
 
+        #@TODO: We can probably clean up the stuff having to do with Torch's 'Inf' and 'NaN' reporting as Caffe doesnt do that either.
+
         # loss and learning rate updates
-        match = re.match(r'Training \(epoch (\d+\.?\d*)\): \w*loss\w* = %s, lr = %s'  % (float_exp, float_exp), message)
+        match = re.match(r'Training \(epoch (\d+\.?\d*)\): \w*loss\w* = %s, lr = %s, accuracy = %s'  % (float_exp, float_exp, float_exp), message, flags=re.IGNORECASE)
         if match:
             index = float(match.group(1))
             l = match.group(2)
-            assert not('inf' in l or 'nan' in l), 'Network reported %s for training loss. Try decreasing your learning rate.'  % l
+            assert not('Inf' in l or 'NaN' in l), 'Network reported %s for training loss. Try decreasing your learning rate.'  % l
             l = float(l)
-            lr = match.group(4)
-            lr = float(lr)
+            lr = float(match.group(4))
+            a = float(match.group(6))
+
             # epoch updates
             self.send_progress_update(index)
 
             self.save_train_output('loss', 'SoftmaxWithLoss', l)
             self.save_train_output('learning_rate', 'LearningRate', lr)
+            self.save_train_output('accuracy', 'Accuracy', a)
             self.logger.debug(message)
 
             return True
@@ -305,13 +309,13 @@ class TensorflowTrainTask(TrainTask):
             a = match.group(5)
             # note: validation loss could have diverged however if the training loss is still finite, there is a slim possibility
             # that the network keeps learning something useful, so we don't treat infinite validation loss as a fatal error
-            if not('inf' in l or 'nan' in l):
+            if not('Inf' in l or 'NaN' in l):
                 l = float(l)
                 self.logger.debug('Network validation loss #%s: %s' % (index, l))
                 # epoch updates
                 self.send_progress_update(index)
                 self.save_val_output('loss', 'SoftmaxWithLoss', l)
-                if a and a.lower() != 'inf' and a.lower() != '-inf':
+                if a and a.lower() != 'Inf' and a.lower() != '-Inf':
                     a = float(a)
                     self.logger.debug('Network accuracy #%s: %s' % (index, a))
                     self.save_val_output('accuracy', 'Accuracy', a)

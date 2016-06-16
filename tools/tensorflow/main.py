@@ -42,29 +42,14 @@ tf.app.flags.DEFINE_string('snapshotPrefix', '', """Prefix of the weights/snapsh
 tf.app.flags.DEFINE_string('train', '', """Directory with training db""")
 tf.app.flags.DEFINE_string('validation', '', """Directory with validation db""")
 
-
-
-
-
 # Tensorflow-unique arguments for DIGITS
-tf.app.flags.DEFINE_string('summaries_dir', '', """Directory of Tensorboard Summaries (logdir)""")
+tf.app.flags.DEFINE_string('summaries_dir', '', """Directory of Tensorboard Summaries (logdir)""") # default is the cwd (jobs dir)
+
+
+
 
 # Constants
 DEFAULT_BATCH_SIZE = 16
-
-# TIM'S OVERRIDES:
-FLAGS.labels = "/Users/tzaman/Desktop/20160203-153604-2bf4/labels.txt"
-FLAGS.networkDirectory = "../../digits/standard-networks/tensorflow"
-#FLAGS.network = "lenet_slim.py"
-FLAGS.network = "lenet.py"
-FLAGS.train = "/Users/tzaman/Desktop/20160203-153604-2bf4/train_db"
-FLAGS.validation = "/Users/tzaman/Desktop/20160203-153604-2bf4/val_db"
-FLAGS.summaries_dir = "/tmp/tb/"
-FLAGS.save = "/Users/tzaman/Desktop/result"
-FLAGS.seed = 1
-FLAGS.epoch = 5
-FLAGS.learningRate = 0.01
-
 
 # Set Tensorboard log directory
 if FLAGS.summaries_dir:
@@ -259,13 +244,14 @@ saver = tf.train.Saver()
 #TODO: Restore/finetune option:
 #saver.restore(sess, ckpt.model_checkpoint_path)
 
+logging.info('started training the model')
 
 # Launch the graph
 with tf.Session() as sess:
     # Tensorboard: Merge all the summaries and write them out to /tmp/mnist_logs (by default)
     summary_op = tf.merge_summary(summaries)
-    writer_train = tf.train.SummaryWriter(os.path.join(FLAGS.summaries_dir, 'train'), sess.graph)
-    writer_val = tf.train.SummaryWriter(os.path.join(FLAGS.summaries_dir, 'val'), sess.graph)
+    writer_train = tf.train.SummaryWriter(os.path.join(FLAGS.summaries_dir, 'tb', 'train'), sess.graph)
+    writer_val = tf.train.SummaryWriter(os.path.join(FLAGS.summaries_dir, 'tb', 'val'), sess.graph)
 
     # Initialize
     init = tf.initialize_all_variables().run()
@@ -297,7 +283,7 @@ with tf.Session() as sess:
             # Start with a forward pass
             if (t==0) or (logged_since_last_check>=logging_check_interval):
                 logged_since_last_check = 0
-                #TODO: report average loss and acc since last check?
+                #TODO: report average loss and acc since last check? in the current way we only do it for the latest batch
                 logging.info("Training (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(loss) + ", lr = " + str(1337)  + ", accuracy = " + "{:.5f}".format(acc) )            
 
             # Validation Pass
@@ -346,7 +332,8 @@ with tf.Session() as sess:
     # We do not need to sess.close() because we've used a with block
 
 
-            
+# enforce clean exit
+exit(0)          
             
 
 

@@ -6,6 +6,8 @@ import os
 from . import config_option
 from . import prompt
 
+# @TODO: IN THIS FILE ONLY CHECK IF `import tensorflow` WORKS AND REPORT ABOUT IT.
+
 class TensorflowOption(config_option.FrameworkOption):
     @staticmethod
     def config_file_key():
