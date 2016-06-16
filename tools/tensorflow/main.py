@@ -75,18 +75,18 @@ def main(_):
     classes = 0
     nclasses = 0
     if FLAGS.labels:
-        logging.info("Loading label definitions from " + FLAGS.labels + " file")
+        logging.info("Loading label definitions from %s file" % FLAGS.labels)
         classes = tf_data.loadLabels(FLAGS.labels)
         nclasses = len(classes)
         if not classes:
-            logging.error("Reading labels file " + FLAGS.labels + " failed.")
+            logging.error("Reading labels file %s failed." % FLAGS.labels)
             exit(-1)
-        logging.info('Found ' + str(nclasses) + " classes")
+        logging.info("Found %s classes" % nclasses)
 
     train_data_loader = tf_data.DataLoader(FLAGS.train, nclasses, FLAGS.shuffle)
 
     _, input_tensor_shape = train_data_loader.getInfo()
-    logging.info("Found " + str(train_data_loader.total) + " images in train db " + FLAGS.train)
+    logging.info("Found %s images in train db %s " % (train_data_loader.total, FLAGS.train))
 
     if FLAGS.validation:
         val_data_loader = tf_data.DataLoader(FLAGS.validation, nclasses, FLAGS.shuffle)
@@ -112,23 +112,23 @@ def main(_):
     # During training, a log output should occur at least 8 times per epoch or every 5000 images, whichever lower
     logging_check_interval = math.ceil(train_data_loader.total/8) if math.ceil(train_data_loader.total/8)<5000 else 5000
 
-    logging.info("During training. details will be logged after every " + str(logging_check_interval) + " images")
+    logging.info("During training. details will be logged after every %s images" % logging_check_interval)
 
     # This variable keeps track of next epoch, when to perform validation.
     next_validation = FLAGS.interval
-    logging.info("Training epochs to be completed for each validation : " + str(next_validation))
+    logging.info("Training epochs to be completed for each validation : %s" % next_validation)
     last_validation_epoch = 0
 
     # This variable keeps track of next epoch, when to save model weights.
     next_snapshot_save = FLAGS.snapshotInterval
-    logging.info("Training epochs to be completed before taking a snapshot : " + str(next_snapshot_save))
+    logging.info("Training epochs to be completed before taking a snapshot : %s" % next_snapshot_save)
     last_snapshot_save_epoch = 0
 
     snapshot_prefix = FLAGS.snapshotPrefix if FLAGS.snapshotPrefix else FLAGS.network
 
     if not os.path.exists(FLAGS.save):
         os.makedirs(FLAGS.save)
-        logging.info("Created a directory " + FLAGS.save + " to save all the snapshots")
+        logging.info("Created a directory %s to save all the snapshots" % FLAGS.save)
 
 
     ngpus = 1 # TODO: how to handle this correctly with tf? 
@@ -175,7 +175,7 @@ def main(_):
     if FLAGS.optimization == 'adam':
         optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learningRate).minimize(network['cost'])
     else:
-        logging.error("Invalid optimization flag (" +  FLAGS.optimization + ")")
+        logging.error("Invalid optimization flag %s" % FLAGS.optimization)
         exit(-1)
 
     #lr = tf.train.exponential_decay(0.001, #initial_learning_rate
@@ -218,7 +218,7 @@ def main(_):
         batch_size_train = FLAGS.batchSize
         batch_size_val = FLAGS.batchSize
 
-    logging.info("Train batch size is " + str(batch_size_train) + " and validation batch size is " + str(batch_size_val))
+    logging.info("Train batch size is %s and validation batch size is %s" % (batch_size_train, batch_size_val))
 
 
     # epoch value will be calculated for every batch size. To maintain unique epoch value between batches, it needs to be rounded to the required number of significant digits.
@@ -228,9 +228,9 @@ def main(_):
         tmp_batchsize = tmp_batchsize * 10
         epoch_round = epoch_round + 1
 
-    logging.info("While logging, epoch value will be rounded to " + str(epoch_round) + " significant digits")
+    logging.info("While logging, epoch value will be rounded to %s significant digits" % epoch_round)
 
-    logging.info("Model weights will be saved as " + snapshot_prefix + "_<EPOCH>_Model.ckpt")
+    logging.info("Model weights will be saved as %s_<EPOCH>_Model.ckpt" % snapshot_prefix)
 
     # TensorBoard
     with tf.name_scope('tims_tower') as scope:
@@ -256,12 +256,12 @@ def main(_):
 
         # If weights option is set, preload weights from existing models appropriately
         if FLAGS.weights:
-            logging.info("Loading weights from pretrained model - " + FLAGS.weights)
+            logging.info("Loading weights from pretrained model - %s " % FLAGS.weights )
             ckpt = tf.train.get_checkpoint_state(FLAGS.weights)
             if ckpt and ckpt.model_checkpoint_path:
                 saver.restore(sess, ckpt.model_checkpoint_path)
             else:
-                logging.error("Weight file for pretrained model not found: " +  FLAGS.weights)
+                logging.error("Weight file for pretrained model not found: %s" % FLAGS.weights  )
                 exit(-1)
 
 
@@ -336,7 +336,7 @@ def main(_):
                 if current_epoch >= next_snapshot_save:
                     filename_snapshot = os.path.join(FLAGS.save, snapshot_prefix + "_" + str(current_epoch) + "_Model.ckpt")
                     logging.info("Snapshotting to " + filename_snapshot)
-                    saver.save(sess, filename_snapshot, latest_filename='.checkpoint')
+                    saver.save(sess, filename_snapshot)
                     logging.info("Snapshot saved - " + filename_snapshot)
 
                     # To find next nearest epoch value that exactly divisible by FLAGS.snapshotInterval
