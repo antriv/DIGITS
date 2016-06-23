@@ -1,3 +1,10 @@
+# Copyright (c) 2016, NVIDIA CORPORATION.  All rights reserved.
+
+"""Defines data loading and processing"""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import sys
 sys.path.append("/Users/tzaman/caffe/python/caffe/proto/")
@@ -17,7 +24,7 @@ def loadLabels(filename):
 class DataLoader:
 
     def lmdb_getSample(self, shuffle, idx):
-        #print "lmdb_getSample(shuffle=" + str(shuffle) + ", idx=" + str(idx) + ")"
+        #print("lmdb_getSample(shuffle=" + str(shuffle) + ", idx=" + str(idx) + ")")
         if shuffle:
             idx = random.randint(0,self.total-1)
 
@@ -36,7 +43,8 @@ class DataLoader:
         im_pil = PIL.Image.open(s)
         im_np = np.asarray(im_pil)
 
-        return im_np, label_onehot
+        return im_np, label_onehot # One-Hot Approach
+        #return im_np, label
 
     def getFirstImageShape(self):
         # Sample first image to get dimensions
@@ -52,22 +60,25 @@ class DataLoader:
     def next_batch(self, batch_size, idx):
         #print "next_batch( batch_size=" + str(batch_size) + ", idx=" + str(idx)
 
-        if (self.input_tensor_shape[2]==1):
-            images = np.empty([batch_size, self.input_tensor_shape[1], self.input_tensor_shape[0]], dtype=int)
-        else :
-            images = np.empty([batch_size, self.input_tensor_shape[1], self.input_tensor_shape[0], self.input_tensor_shape[2]], dtype=int)
-        labels = np.empty([batch_size, self.nclasses], dtype=int)
+        if self.input_tensor_shape[2] == 1:
+            images = np.empty([batch_size, self.input_tensor_shape[1], self.input_tensor_shape[0]], dtype=float)
+        else:
+            images = np.empty([batch_size, self.input_tensor_shape[1], self.input_tensor_shape[0], self.input_tensor_shape[2]], dtype=float)
+        labels = np.empty([batch_size, self.nclasses], dtype=int) # One-Hot Approach
+        #labels = np.empty([batch_size, 1], dtype=int)
 
         for i in xrange(0, batch_size):
             # Get next single sample
             image, label = self.lmdb_getSample(self.shuffle, idx+i)
-            images[i]=image
-            labels[i]=label
+            images[i] = image
+            labels[i] = label
 
-        return images/255., labels
+        # Keep data in DIGITS [0 255] default range
+
+        return (images-127.5)/127.5, labels 
 
     def __init__(self, location, nclasses, shuffle):
-        print "DataLoader __init__()"
+        print("DataLoader __init__()")
 
         # Set up the data loader
         self.lmdb_env = lmdb.open(location, readonly=True, lock=False)

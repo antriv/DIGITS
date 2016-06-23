@@ -18,7 +18,11 @@ def build_model(params):
     
     return {
         'model' : model, # The predictor model architecture
-        'cost' : tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(model, params['y'])),
+        'cost' : tf.reduce_mean(
+            tf.nn.softmax_cross_entropy_with_logits(
+                model, params['y'],
+                name='cross_entropy_per_example'),
+            name='cross_entropy'),
         'train_batch_size' : 64,
         'validation_batch_size' : 100,
         'feed_dict_train' : {is_training: True},
