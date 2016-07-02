@@ -191,6 +191,28 @@ def _add_loss_summaries(total_loss):
     return loss_averages_op
 
 
+def Validation(sess, x, y, val_data_loader, writer_val, batch_size_val, loss, accuracy, network, summary_op, step, current_epoch):
+    #@TODO: put in class (and reduce args)
+    loss_cum_val = 0
+    acc_cum_val = 0
+    t_v = 0
+    num_batches = 0
+    while t_v < val_data_loader.total:
+        data_batch_size_v = min(val_data_loader.total-t_v, batch_size_val)
+        batch_x, batch_y = val_data_loader.next_batch(data_batch_size_v, t_v)
+        loss_val, acc_val, summary_str = sess.run([loss, accuracy, summary_op], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_val'].items()))
+        writer_val.add_summary(summary_str, step)
+        loss_cum_val = loss_cum_val + loss_val
+        acc_cum_val = acc_cum_val + (acc_val * data_batch_size_v) #TODO: obtain this from a confmat struct-ish thing
+        t_v = t_v + data_batch_size_v
+        num_batches = num_batches + 1
+
+    total_avg_loss = float(loss_cum_val)/num_batches
+    total_acc = acc_cum_val/val_data_loader.total
+
+    logging.info("Validation (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(total_avg_loss) + ", accuracy = " + "{:.5f}".format(total_acc) )
+
+
 def main(_):
 
     with tf.Graph().as_default(), tf.device('/cpu:0'):
@@ -342,340 +364,238 @@ def main(_):
 
         logging.info("Model weights will be saved as %s_<EPOCH>_Model.ckpt", snapshot_prefix)
 
-        ## TensorBoard
-        with tf.name_scope('tims_tower') as scope:
-            summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
-        #    # Add histograms for trainable variables.
-        #    for var in tf.trainable_variables():
-        #        summaries.append(tf.histogram_summary(var.op.name, var))
-        #    # Add a summary to track the learning rate.
-        #    #summaries.append(tf.scalar_summary('learning_rate', lr))
-        #    summaries.append(tf.scalar_summary('loss', network['cost']))
-        #    summaries.append(tf.scalar_summary('accuracy', accuracy))
-
         logging.info('started training the model')
 
-        if 1:
-            global_step = tf.get_variable(
-                'global_step', [],
-                initializer=tf.constant_initializer(0), trainable=False)
+        global_step = tf.get_variable(
+            'global_step', [],
+            initializer=tf.constant_initializer(0), trainable=False)
 
-            if FLAGS.seed:
-                tf.set_random_seed(int(FLAGS.seed))
-                train_data_loader.setSeed(int(FLAGS.seed))
-                val_data_loader.setSeed(int(FLAGS.seed))
+        if FLAGS.seed:
+            tf.set_random_seed(int(FLAGS.seed))
+            train_data_loader.setSeed(int(FLAGS.seed))
+            val_data_loader.setSeed(int(FLAGS.seed))
 
-
-
-
-    #        # Calculate the gradients for each model tower.
-    #        tower_grads = []
-    #        for i in xrange(ngpus):
-    #            #with tf.device('/gpu:%d' % i): @TODO: use this /gpu ofc
-    #            with tf.device('/cpu:%d' % i): 
-    #                with tf.name_scope('%s_%d' % (TOWER_NAME, i)) as scope:
-    #                    # Calculate the loss for one tower of the CIFAR model. This function
-    #                    # constructs the entire CIFAR model but shares the variables across
-    #                    # all towers.
-    #
-    #                    # Set up input tensor
-    #                    if input_tensor_shape[2] == 1:
-    #                        x = tf.placeholder(tf.float32, shape=(None, input_tensor_shape[0], input_tensor_shape[1]))
-    #                    else:
-    #                        x = tf.placeholder(tf.float32, shape=(None, input_tensor_shape[0], input_tensor_shape[1], input_tensor_shape[2]))
-    #
-    #                    # Set up output (truth) tensor
-    #                    y = tf.placeholder(tf.float32, shape=(None, nclasses)) # One-Hot Approach
-    #                    #y = tf.placeholder(tf.float32, shape=(None, 1)
-    #                    #y = tf.cast(y, tf.int64) # Cast to this for classification (or previously allocate as such)
-    #
-    #                    model_params = {
-    #                        'x' : x, # Input Tensor
-    #                        'y' : y, # Output Tensor (Truth)
-    #                        'nclasses' : nclasses, 
-    #                        'input_shape' : input_tensor_shape, 
-    #                        'ngpus' : ngpus
-    #                    }
-    #
-    #                    # Run the user model through the build_model function that should be filled in
-    #                    network = build_model(model_params)
-    #
-    #
-    #
-    #                    cost = network['cost'] #TODO: given the parallel environment; should i clone this?
-    #                    tf.add_to_collection('losses', cost)
-    #                    costly = tf.add_n(tf.get_collection('losses'), name='total_loss')
-    #                    loss = tower_loss(scope)
-    #
-    #                    # Reuse variables for the next tower.
-    #                    tf.get_variable_scope().reuse_variables()
-    #
-    #                    # Retain the summaries from the final tower.
-    #                    summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
-    #
-    #                    # Calculate the gradients for the batch of data on this CIFAR tower.
-    #                    grads = optimizer.compute_gradients(loss)
-    #
-    #                    # Keep track of the gradients across all towers.
-    #                    tower_grads.append(grads)
-    #
-    #        # We must calculate the mean of each gradient. Note that this is the
-    #        # synchronization point across all towers.
-    #        grads = average_gradients(tower_grads)
-    #
-    #        # Add a summary to track the learning rate.
-    #        #summaries.append(tf.scalar_summary('learning_rate', lr))
-    #
-    #        # Add histograms for gradients.
-    #        for grad, var in grads:
-    #            if grad is not None:
-    #                summaries.append(tf.histogram_summary(var.op.name + '/gradients', grad))
-    #
-    #        # Apply the gradients to adjust the shared variables.
-    #        apply_gradient_op = optimizer.apply_gradients(grads, global_step=global_step)
-    #
-    #        # Add histograms for trainable variables.
-    #        for var in tf.trainable_variables():
-    #            summaries.append(tf.histogram_summary(var.op.name, var))
-    #
-    #        # Track the moving averages of all trainable variables.
-    #        variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
-    #        variables_averages_op = variable_averages.apply(tf.trainable_variables())
-    #
-    #        # Group all updates to into a single train op.
-    #        train_op = tf.group(apply_gradient_op, variables_averages_op)
-    #
-            # Accuracy Op
-            # @TODO: check if the network here is right
-            correct_pred = tf.equal(tf.argmax(network['model'], 1), y) # Equal equates to boolean. Argmax gets the index of the max.
-            accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
-            summaries.append(tf.scalar_summary('accuracy', accuracy))
-
-            cross_entropy_mean = tf.reduce_mean(network['cost'], name='cross_entropy')
-            tf.add_to_collection('losses', cross_entropy_mean)
-
-            # The total loss is defined as the cross entropy loss plus all of the weight
-            # decay terms (L2 loss).
-            loss = tf.add_n(tf.get_collection('losses'), name='total_loss')
-
-            #loss = cifar10.loss(logits, labels)
-
-            # Build a Graph that trains the model with one batch of examples and
-            # updates the model parameters.
-            #train_op = cifar10.train(loss, global_step)
-
-            # Generate moving averages of all losses and associated summaries.
-            loss_averages_op = _add_loss_summaries(loss)
-
-            # Compute gradients.
-            with tf.control_dependencies([loss_averages_op]):
-                # @TODO: Create a LRPolicy Class
-                logging.info('Optimizer:' + FLAGS.optimization)
-                if FLAGS.optimization == 'adam':
-                    optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learningRate)#.minimize(network['cost']) #FIXME: 
-                elif FLAGS.optimization == 'sgd':
-                    print('using sgd')
-                    lr = tf.train.exponential_decay(FLAGS.learningRate,
-                                            global_step,
-                                            10000,  #decay_steps
-                                            FLAGS.learningRateDecay,
-                                            staircase=True)
-                    #lr = tf.placeholder(tf.float32, shape=[]) # You can add lr to the feed_dict this way
-                    #lr = tf.Variable(FLAGS.learningRate)
-                    # Create an optimizer that performs gradient descent.
-                    optimizer = tf.train.GradientDescentOptimizer(lr)
-                elif FLAGS.optimization == 'rmsprop':
-                    #@TODO
-                    # lr =
-                    optimizer = tf.train.RMSPropOptimizer(lr, RMSPROP_DECAY,
-                                            momentum=RMSPROP_MOMENTUM,
-                                            epsilon=RMSPROP_EPSILON)
-                    exit(-1)
-                else:
-                    logging.error("Invalid optimization flag %s", FLAGS.optimization)
-                    exit(-1)
-                grads = optimizer.compute_gradients(loss)
+        # Accuracy Op
+        # @TODO: check if the network here is right
+        correct_pred = tf.equal(tf.argmax(network['model'], 1), y) # Equal equates to boolean. Argmax gets the index of the max.
+        accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
 
-            # Apply gradients.
-            apply_gradient_op = optimizer.apply_gradients(grads, global_step=global_step)
+         ## TensorBoard
+        with tf.name_scope('tims_tower') as scope:
+            summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
 
-            # Add histograms for gradients.
-            for grad, var in grads:
-                if grad is not None:
-                    tf.histogram_summary(var.op.name + '/gradients', grad)
+        cross_entropy_mean = tf.reduce_mean(network['cost'], name='cross_entropy')
+        tf.add_to_collection('losses', cross_entropy_mean)
 
-            # Track the moving averages of all trainable variables.
-            variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
-            variables_averages_op = variable_averages.apply(tf.trainable_variables())
+        # The total loss is defined as the cross entropy loss plus all of the weight
+        # decay terms (L2 loss).
+        loss = tf.add_n(tf.get_collection('losses'), name='total_loss')
 
-            with tf.control_dependencies([apply_gradient_op, variables_averages_op]):
-                train_op = tf.no_op(name='train')
+        #loss = cifar10.loss(logits, labels)
 
-            # Create a saver.
-            # Will only save sharded if we want to use the model for serving
-            saver = tf.train.Saver(tf.all_variables(), max_to_keep=0, sharded=FLAGS.tf_serving_export) 
+        # Build a Graph that trains the model with one batch of examples and
+        # updates the model parameters.
+        #train_op = cifar10.train(loss, global_step)
 
-            # Build the summary operation from the (last tower) summaries.
-            summary_op = tf.merge_summary(summaries)
+        # Generate moving averages of all losses and associated summaries.
+        loss_averages_op = _add_loss_summaries(loss)
 
-            # Build an initialization operation to run below.
-            init = tf.initialize_all_variables()
+        # Compute gradients.
+        with tf.control_dependencies([loss_averages_op]):
+            # @TODO: Create a LRPolicy Class
+            logging.info('Optimizer:' + FLAGS.optimization)
+            if FLAGS.optimization == 'adam':
+                optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learningRate)#.minimize(network['cost']) #FIXME: 
+            elif FLAGS.optimization == 'sgd':
+                print('using sgd')
+                #lr = tf.train.exponential_decay(FLAGS.learningRate,
+                #                        global_step,
+                #                        10000,  #decay_steps
+                #                        FLAGS.learningRateDecay,
+                #                        staircase=True)
+                #lr = tf.placeholder(tf.float32, shape=[]) # You can add lr to the feed_dict this way
+                #lr = tf.Variable(FLAGS.learningRate)
+                # Create an optimizer that performs gradient descent.
+                optimizer = tf.train.GradientDescentOptimizer(FLAGS.learningRate)
+            elif FLAGS.optimization == 'rmsprop':
+                #@TODO
+                # lr =
+                optimizer = tf.train.RMSPropOptimizer(lr, RMSPROP_DECAY,
+                                        momentum=RMSPROP_MOMENTUM,
+                                        epsilon=RMSPROP_EPSILON)
+                exit(-1)
+            else:
+                logging.error("Invalid optimization flag %s", FLAGS.optimization)
+                exit(-1)
+            grads = optimizer.compute_gradients(loss)
 
-            # Start running operations on the Graph. allow_soft_placement must be set to
-            # True to build towers on GPU, as some of the ops do not have GPU
-            # implementations.
-            sess = tf.Session(config=tf.ConfigProto(
-                allow_soft_placement=True, # will automatically do non-gpu supported ops on cpu
-                log_device_placement=FLAGS.log_device_placement))
 
-            # Initialize variables
-            sess.run(init)
+        # Apply gradients.
+        apply_gradient_op = optimizer.apply_gradients(grads, global_step=global_step)
 
-            # # If weights option is set, preload weights from existing models appropriately
-            # if FLAGS.weights:
-            #     logging.info("Loading weights from pretrained model - %s ", FLAGS.weights )
-            #     ckpt = tf.train.get_checkpoint_state(FLAGS.weights)
-            #     if ckpt and ckpt.model_checkpoint_path:
-            #         saver.restore(sess, ckpt.model_checkpoint_path)
-            #     else:
-            #         logging.error("Weight file for pretrained model not found: %s", FLAGS.weights  )
-            #         exit(-1)
+        # Add histograms for gradients.
+        for grad, var in grads:
+            if grad is not None:
+                tf.histogram_summary(var.op.name + '/gradients', grad)
 
-            # Start queue runners
-            # @TODO: LMDB-tf-reader Op needs to be plemented for us the use queue runners.
-            # tf.train.start_queue_runners(sess=sess)
+        # Track the moving averages of all trainable variables.
+        variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
+        variables_averages_op = variable_averages.apply(tf.trainable_variables())
 
-            # Tensorboard: Merge all the summaries and write them out to /tmp/mnist_logs (by default)
-            writer_train = tf.train.SummaryWriter(os.path.join(FLAGS.tf_summaries_dir, 'tb', 'train'), sess.graph)
-            #writer_val = tf.train.SummaryWriter(os.path.join(FLAGS.tf_summaries_dir, 'tb', 'val'), sess.graph)
+        with tf.control_dependencies([apply_gradient_op, variables_averages_op]):
+            train_op = tf.no_op(name='train')
 
-            # Start looping
-            for step in xrange(FLAGS.epoch * train_data_loader.total):
-                start_time = time.time()
+        # Create a saver.
+        # Will only save sharded if we want to use the model for serving
+        saver = tf.train.Saver(tf.all_variables(), max_to_keep=0, sharded=FLAGS.tf_serving_export) 
 
-                data_loader_index = (step * batch_size_train) % (train_data_loader.total-batch_size_train) # hacky
-                data_batch_size = batch_size_train #@TODO
+
+        ## TensorBoard
+        # Add histograms for trainable variables.
+        for var in tf.trainable_variables():
+            summaries.append(tf.histogram_summary(var.op.name, var))
+        # Add a summary to track the learning rate.
+        #summaries.append(tf.scalar_summary('learning_rate', lr))
+        summaries.append(tf.scalar_summary('loss', network['cost']))
+        summaries.append(tf.scalar_summary('accuracy', accuracy))
+
+        # Build the summary operation from the (last tower) summaries.
+        summary_op = tf.merge_summary(summaries)
+
+
+        # Build an initialization operation to run below.
+        init = tf.initialize_all_variables()
+
+        # Start running operations on the Graph. allow_soft_placement must be set to
+        # True to build towers on GPU, as some of the ops do not have GPU
+        # implementations.
+        sess = tf.Session(config=tf.ConfigProto(
+            allow_soft_placement=True, # will automatically do non-gpu supported ops on cpu
+            log_device_placement=FLAGS.log_device_placement))
+
+        # Initialize variables
+        sess.run(init)
+
+        # # If weights option is set, preload weights from existing models appropriately
+        # if FLAGS.weights:
+        #     logging.info("Loading weights from pretrained model - %s ", FLAGS.weights )
+        #     ckpt = tf.train.get_checkpoint_state(FLAGS.weights)
+        #     if ckpt and ckpt.model_checkpoint_path:
+        #         saver.restore(sess, ckpt.model_checkpoint_path)
+        #     else:
+        #         logging.error("Weight file for pretrained model not found: %s", FLAGS.weights  )
+        #         exit(-1)
+
+        # Start queue runners
+        # @TODO: LMDB-tf-reader Op needs to be plemented for us the use queue runners.
+        # tf.train.start_queue_runners(sess=sess)
+
+        # Tensorboard: Merge all the summaries and write them out to /tmp/mnist_logs (by default)
+        writer_train = tf.train.SummaryWriter(os.path.join(FLAGS.tf_summaries_dir, 'tb', 'train'), sess.graph)
+        writer_val = tf.train.SummaryWriter(os.path.join(FLAGS.tf_summaries_dir, 'tb', 'val'), sess.graph)
+
+#        # Start looping
+#        for step in xrange(FLAGS.epoch * train_data_loader.total):
+#            start_time = time.time()
+#
+#            data_loader_index = (step * batch_size_train) % (train_data_loader.total-batch_size_train) # hacky
+#            data_batch_size = batch_size_train #@TODO
+#            batch_x, batch_y = train_data_loader.next_batch(data_batch_size, data_loader_index)
+#
+#            _, loss_value, acc = sess.run([train_op, loss, accuracy], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_train'].items()))
+#            duration = time.time() - start_time
+#
+#            if np.isnan(loss_value):
+#                logging.error('Model diverged with loss = NaN')
+#                exit(-1)
+#
+#            if step % 10 == 0:
+#                #num_examples_per_step = FLAGS.batchSize * ngpus
+#                #examples_per_sec = num_examples_per_step / duration
+#                #sec_per_batch = duration / ngpus
+#                logging.info("Training (step " + str(step) + "): loss = " + "{:.6f}".format(loss_value) + "): acc = " + "{:.6f}".format(acc)   )            
+#
+#            if step % 100 == 0:
+#                summary_str = sess.run(summary_op, feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_train'].items()))
+#                writer_train.add_summary(summary_str, step)
+#                writer_train.flush()
+#
+#
+#        # enforce clean exit
+#        exit(0)     
+
+
+
+        # Launch the graph
+        for epoch in xrange(0,FLAGS.epoch):
+            data_loader_index = 0
+            t = 0
+            logged_since_last_check = 0 # Amount of images logged since last logging
+
+            # Start with an initial validation
+            Validation(sess, x, y, val_data_loader, writer_val, batch_size_val, loss, accuracy, network, summary_op, 0, 0)
+
+            while t < train_data_loader.total:
+                step = t+epoch*train_data_loader.total # Usage of steps seems a TensorFlow convention
+                data_batch_size = min(train_data_loader.total-data_loader_index, batch_size_train)
+
                 batch_x, batch_y = train_data_loader.next_batch(data_batch_size, data_loader_index)
 
-                _, loss_value, acc = sess.run([train_op, loss, accuracy], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_train'].items()))
-                duration = time.time() - start_time
+                # Update for next batch start index
+                data_loader_index = data_loader_index + data_batch_size
+                
+                logged_since_last_check = logged_since_last_check + data_batch_size
 
-                if np.isnan(loss_value):
-                    logging.error('Model diverged with loss = NaN')
+                current_epoch = epoch + round(float(t)/train_data_loader.total, epoch_round)
+                
+                
+
+                # Backward pass
+                _, loss_val, acc_val, summary_str = sess.run([train_op, loss, accuracy, summary_op], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_train'].items()))
+                writer_train.add_summary(summary_str, step)
+                if np.isnan(loss_val):
+                    logging.error('Model diverged with loss_val = NaN')
                     exit(-1)
 
-                if step % 10 == 0:
-                    #num_examples_per_step = FLAGS.batchSize * ngpus
-                    #examples_per_sec = num_examples_per_step / duration
-                    #sec_per_batch = duration / ngpus
-                    logging.info("Training (step " + str(step) + "): loss = " + "{:.6f}".format(loss_value) + "): acc = " + "{:.6f}".format(acc)   )            
+                # Start with a forward pass
+                if (t == 0) or (logged_since_last_check >= logging_check_interval):
+                    logged_since_last_check = 0
+                    #TODO: report average loss and acc since last check? in the current way we only do it for the latest batch
+                    logging.info("Training (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(loss_val) + ", lr = " + str(FLAGS.learningRate)  + ", accuracy = " + "{:.5f}".format(acc_val) )            
 
-                if step % 100 == 0:
-                    summary_str = sess.run(summary_op, feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_train'].items()))
-                    writer_train.add_summary(summary_str, step)
-                    writer_train.flush()
+                # Validation Pass
+                if FLAGS.validation and current_epoch >= next_validation:
+                    Validation(sess, x, y, val_data_loader, writer_val, batch_size_val, loss, accuracy, network, summary_op, step, current_epoch)
 
+                    #To find next nearest epoch value that exactly divisible by FLAGS.interval:
+                    next_validation = (round(float(current_epoch)/FLAGS.interval) + 1) * FLAGS.interval 
+                    last_validation_epoch = current_epoch
 
-            # enforce clean exit
-            exit(0)     
+                # Saving Snapshot
+                if current_epoch >= next_snapshot_save:
+                    filename_snapshot = os.path.join(FLAGS.save, snapshot_prefix + "_" + str(current_epoch) + "_Model.ckpt")
+                    logging.info("Snapshotting to " + filename_snapshot)
+                    saver.save(sess, filename_snapshot)
+                    logging.info("Snapshot saved - " + filename_snapshot)
 
+                    if FLAGS.tf_serving_export:
+                        from tensorflow_serving.session_bundle import exporter
+                        model_exporter = exporter.Exporter(saver)
+                        # @TODO: The signature scores_tensor doesn't currently have a softmax layer.
+                        signature = exporter.classification_signature(input_tensor=x, scores_tensor=network['model'])
+                        model_exporter.init(sess.graph.as_graph_def(), default_graph_signature=signature)
+                        model_exporter.export(export_path, tf.constant(FLAGS.export_version), sess)
 
+                    # To find next nearest epoch value that exactly divisible by FLAGS.snapshotInterval
+                    next_snapshot_save = (round(float(current_epoch)/FLAGS.snapshotInterval) + 1) * FLAGS.snapshotInterval 
+                    last_snapshot_save_epoch = current_epoch
 
+                # The backward pass is completed, and we update the current epoch
+                t = t + data_batch_size
 
-#        # Evaluate model
-#        #correct_pred = tf.equal(tf.argmax(network['model'], 1), tf.argmax(y, 1)) # Equal equates to boolean. Argmax gets the index of the max.
-#        #accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
-#
-#
-#
-#
-#        # Launch the graph
-#        with tf.Session() as sess:
-#
-#
-#            for epoch in xrange(0,FLAGS.epoch):
-#                data_loader_index = 0
-#                t = 0
-#                logged_since_last_check = 0 # Amount of images logged since last logging
-#                while t < train_data_loader.total:
-#                    step = t+epoch*train_data_loader.total # Usage of steps seems a TensorFlow convention
-#                    data_batch_size = min(train_data_loader.total-data_loader_index, batch_size_train)
-#
-#                    batch_x, batch_y = train_data_loader.next_batch(data_batch_size, data_loader_index)
-#
-#                    # Update for next batch start index
-#                    data_loader_index = data_loader_index + data_batch_size
-#                    
-#                    logged_since_last_check = logged_since_last_check + data_batch_size
-#
-#                    current_epoch = epoch + round(float(t)/train_data_loader.total, epoch_round)
-#
-#                    # Backward pass
-#                    _, loss, acc, summary_str = sess.run([optimizer, network['cost'], accuracy, summary_op], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_train'].items()))
-#                    writer_train.add_summary(summary_str, step)
-#                    if np.isnan(loss):
-#                        logging.error('Model diverged with loss = NaN')
-#                        exit(-1)
-#
-#                    # Start with a forward pass
-#                    if (t == 0) or (logged_since_last_check >= logging_check_interval):
-#                        logged_since_last_check = 0
-#                        #TODO: report average loss and acc since last check? in the current way we only do it for the latest batch
-#                        logging.info("Training (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(loss) + ", lr = " + str(1337)  + ", accuracy = " + "{:.5f}".format(acc) )            
-#
-#                    # Validation Pass
-#                    if FLAGS.validation and current_epoch >= next_validation:
-#                        #TODO: Validation() in a function
-#                        loss_cum_val = 0
-#                        acc_cum_val = 0
-#                        t_v = 0
-#                        num_batches = 0
-#                        while t_v < val_data_loader.total:
-#                            data_batch_size_v = min(val_data_loader.total-t_v, batch_size_val)
-#                            batch_x, batch_y = val_data_loader.next_batch(data_batch_size_v, t_v)
-#                            loss, acc, summary_str = sess.run([network['cost'], accuracy, summary_op], feed_dict=dict({x: batch_x, y: batch_y}.items() + network['feed_dict_val'].items()))
-#                            writer_val.add_summary(summary_str, step)
-#                            loss_cum_val = loss_cum_val + loss
-#                            acc_cum_val = acc_cum_val + (acc * data_batch_size_v) #TODO: obtain this from a confmat struct-ish thing
-#                            t_v = t_v + data_batch_size_v
-#                            num_batches = num_batches + 1
-#
-#                        total_avg_loss = float(loss_cum_val)/num_batches
-#
-#                        
-#                        logging.info("Validation (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(total_avg_loss) + ", accuracy = " + "{:.5f}".format(acc_cum_val/val_data_loader.total) )
-#
-#
-#
-#
-#                        #To find next nearest epoch value that exactly divisible by FLAGS.interval:
-#                        next_validation = (round(float(current_epoch)/FLAGS.interval) + 1) * FLAGS.interval 
-#                        last_validation_epoch = current_epoch
-#
-#                    # Saving Snapshot
-#                    if current_epoch >= next_snapshot_save:
-#                        filename_snapshot = os.path.join(FLAGS.save, snapshot_prefix + "_" + str(current_epoch) + "_Model.ckpt")
-#                        logging.info("Snapshotting to " + filename_snapshot)
-#                        saver.save(sess, filename_snapshot)
-#                        logging.info("Snapshot saved - " + filename_snapshot)
-#
-#                        if FLAGS.tf_serving_export:
-#                            from tensorflow_serving.session_bundle import exporter
-#                            model_exporter = exporter.Exporter(saver)
-#                            # @TODO: The signature scores_tensor doesn't currently have a softmax layer.
-#                            signature = exporter.classification_signature(input_tensor=x, scores_tensor=network['model'])
-#                            model_exporter.init(sess.graph.as_graph_def(), default_graph_signature=signature)
-#                            model_exporter.export(export_path, tf.constant(FLAGS.export_version), sess)
-#
-#                        # To find next nearest epoch value that exactly divisible by FLAGS.snapshotInterval
-#                        next_snapshot_save = (round(float(current_epoch)/FLAGS.snapshotInterval) + 1) * FLAGS.snapshotInterval 
-#                        last_snapshot_save_epoch = current_epoch
-#
-#                    # The backward pass is completed, and we update the current epoch
-#                    t = t + data_batch_size
-#
-#            # We do not need to sess.close() because we've used a with block
+        # We need to call sess.close() because we've used a with block
+        sess.close()
 
 
 

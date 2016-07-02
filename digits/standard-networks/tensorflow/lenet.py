@@ -40,32 +40,31 @@ def build_model(params):
         out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
         return out
 
-    # Initialize W using random values in interval [-1/sqrt(n) , 1/sqrt(n)] where n is the input dimension
-    weight_params = {
-        'wc1' : 5*5*params['input_shape'][2],
-        'wc2' : 5*5*20,
-        'wd1' : 4*4*50,
-        'out' : 50
-    }
 
+    # Initialize W using stddev 1/sqrt(n), with n the input dimension size.
     # Store layers weight & bias
     weights = {
         # 5x5 conv, 1 input, 20 outputs
-        'wc1': tf.Variable(tf.random_uniform([5, 5, params['input_shape'][2], 20], -1.0 / math.sqrt(weight_params['wc1']), 1.0 / math.sqrt(weight_params['wc1']))),
+        #'wc1': tf.Variable(tf.random_normal([5, 5, params['input_shape'][2], 20], stddev=1/math.sqrt(weight_n['wc1']))),
+        'wc1': tf.get_variable('wc1', [5, 5, params['input_shape'][2], 20], initializer=tf.truncated_normal_initializer(stddev=1/math.sqrt(5*5*params['input_shape'][2]))),
         #'wc1': tf.Variable(tf.random_normal([5, 5, params['input_shape'][2], 20], stddev=0.1)),
         # 5x5 conv, 20 inputs, 50 outputs
-        'wc2': tf.Variable(tf.random_uniform([5, 5, 20, 50], -1.0 / math.sqrt(weight_params['wc2']), 1.0 / math.sqrt(weight_params['wc2']))),
+        'wc2': tf.get_variable('wc2', [5, 5, 20, 50], initializer=tf.truncated_normal_initializer(stddev=1/math.sqrt(5*5*20))),
+        #'wc2': tf.Variable(tf.random_normal([5, 5, 20, 50], stddev=1/math.sqrt(weight_n['wc2']))),
         # fully connected, 4*4*16=800 inputs, 500 outputs
-        'wd1': tf.Variable(tf.random_uniform([4*4*50, 500], -1.0 / math.sqrt(weight_params['wd1']), 1.0 / math.sqrt(weight_params['wd1']))),
+        'wd1': tf.get_variable('wd1', [4*4*50, 500], initializer=tf.truncated_normal_initializer(stddev=1/math.sqrt(4*4*50))),
+        #'wd1': tf.Variable(tf.random_normal([4*4*50, 500], stddev=1/math.sqrt(weight_n['wd1']))),
         # 500 inputs, 10 outputs (class prediction)
-        'out': tf.Variable(tf.random_uniform([500, params['nclasses']], -1.0 / math.sqrt(weight_params['out']), 1.0 / math.sqrt(weight_params['out'])))
+        'out': tf.get_variable('wout', [500, params['nclasses']], initializer=tf.truncated_normal_initializer(stddev=1/math.sqrt(500))),
+        #'out': tf.Variable(tf.random_normal([500, params['nclasses']], stddev=1/math.sqrt(weight_n['out'])))
     }
 
+    # Leave the intial biases zero
     biases = {
-        'bc1': tf.Variable(tf.zeros([20])),
-        'bc2': tf.Variable(tf.zeros([50])),
-        'bd1': tf.Variable(tf.zeros([500])),
-        'out': tf.Variable(tf.zeros([params['nclasses']]))
+        'bc1': tf.get_variable('bc1', [20], initializer=tf.constant_initializer(0.0)),
+        'bc2': tf.get_variable('bc2', [50], initializer=tf.constant_initializer(0.0)),
+        'bd1': tf.get_variable('bd1', [500], initializer=tf.constant_initializer(0.0)),
+        'out': tf.get_variable('bout', [params['nclasses']], initializer=tf.constant_initializer(0.0))
     }
 
     dropout_placeholder = tf.placeholder(tf.float32)
