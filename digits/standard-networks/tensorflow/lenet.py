@@ -40,23 +40,32 @@ def build_model(params):
         out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
         return out
 
+    # Initialize W using random values in interval [-1/sqrt(n) , 1/sqrt(n)] where n is the input dimension
+    weight_params = {
+        'wc1' : 5*5*params['input_shape'][2],
+        'wc2' : 5*5*20,
+        'wd1' : 4*4*50,
+        'out' : 50
+    }
+
     # Store layers weight & bias
     weights = {
         # 5x5 conv, 1 input, 20 outputs
-        'wc1': tf.Variable(tf.random_normal([5, 5, params['input_shape'][2], 20])),
+        'wc1': tf.Variable(tf.random_uniform([5, 5, params['input_shape'][2], 20], -1.0 / math.sqrt(weight_params['wc1']), 1.0 / math.sqrt(weight_params['wc1']))),
+        #'wc1': tf.Variable(tf.random_normal([5, 5, params['input_shape'][2], 20], stddev=0.1)),
         # 5x5 conv, 20 inputs, 50 outputs
-        'wc2': tf.Variable(tf.random_normal([5, 5, 20, 50])),
+        'wc2': tf.Variable(tf.random_uniform([5, 5, 20, 50], -1.0 / math.sqrt(weight_params['wc2']), 1.0 / math.sqrt(weight_params['wc2']))),
         # fully connected, 4*4*16=800 inputs, 500 outputs
-        'wd1': tf.Variable(tf.random_normal([4*4*50, 500])),
+        'wd1': tf.Variable(tf.random_uniform([4*4*50, 500], -1.0 / math.sqrt(weight_params['wd1']), 1.0 / math.sqrt(weight_params['wd1']))),
         # 500 inputs, 10 outputs (class prediction)
-        'out': tf.Variable(tf.random_normal([500, params['nclasses']]))
+        'out': tf.Variable(tf.random_uniform([500, params['nclasses']], -1.0 / math.sqrt(weight_params['out']), 1.0 / math.sqrt(weight_params['out'])))
     }
 
     biases = {
-        'bc1': tf.Variable(tf.random_normal([20])),
-        'bc2': tf.Variable(tf.random_normal([50])),
-        'bd1': tf.Variable(tf.random_normal([500])),
-        'out': tf.Variable(tf.random_normal([params['nclasses']]))
+        'bc1': tf.Variable(tf.zeros([20])),
+        'bc2': tf.Variable(tf.zeros([50])),
+        'bd1': tf.Variable(tf.zeros([500])),
+        'out': tf.Variable(tf.zeros([params['nclasses']]))
     }
 
     dropout_placeholder = tf.placeholder(tf.float32)
@@ -66,7 +75,7 @@ def build_model(params):
     return {
         'model' : model, # The predictor model architecture
         'cost' : tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(
                 model, params['y'],
                 name='cross_entropy_per_example'),
             name='cross_entropy'),

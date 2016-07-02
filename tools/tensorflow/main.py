@@ -213,18 +213,18 @@ def main(_):
         classes = 0
         nclasses = 0
         if FLAGS.labels:
-            logging.info("Loading label definitions from %s file" % FLAGS.labels)
+            logging.info("Loading label definitions from %s file", FLAGS.labels)
             classes = tf_data.loadLabels(FLAGS.labels)
             nclasses = len(classes)
             if not classes:
-                logging.error("Reading labels file %s failed." % FLAGS.labels)
+                logging.error("Reading labels file %s failed.", FLAGS.labels)
                 exit(-1)
-            logging.info("Found %s classes" % nclasses)
+            logging.info("Found %s classes", nclasses)
 
         train_data_loader = tf_data.DataLoader(FLAGS.train, nclasses, FLAGS.shuffle)
 
         _, input_tensor_shape = train_data_loader.getInfo()
-        logging.info("Found %s images in train db %s " % (train_data_loader.total, FLAGS.train))
+        logging.info("Found %s images in train db %s ", (train_data_loader.total, FLAGS.train))
 
         if FLAGS.validation:
             val_data_loader = tf_data.DataLoader(FLAGS.validation, nclasses, FLAGS.shuffle)
@@ -246,23 +246,23 @@ def main(_):
         # During training, a log output should occur at least 8 times per epoch or every 5000 images, whichever lower
         logging_check_interval = math.ceil(train_data_loader.total/8) if math.ceil(train_data_loader.total/8)<5000 else 5000
 
-        logging.info("During training. details will be logged after every %s images" % logging_check_interval)
+        logging.info("During training. details will be logged after every %s images", logging_check_interval)
 
         # This variable keeps track of next epoch, when to perform validation.
         next_validation = FLAGS.interval
-        logging.info("Training epochs to be completed for each validation : %s" % next_validation)
+        logging.info("Training epochs to be completed for each validation : %s", next_validation)
         last_validation_epoch = 0
 
         # This variable keeps track of next epoch, when to save model weights.
         next_snapshot_save = FLAGS.snapshotInterval
-        logging.info("Training epochs to be completed before taking a snapshot : %s" % next_snapshot_save)
+        logging.info("Training epochs to be completed before taking a snapshot : %s", next_snapshot_save)
         last_snapshot_save_epoch = 0
 
         snapshot_prefix = FLAGS.snapshotPrefix if FLAGS.snapshotPrefix else FLAGS.network
 
         if not os.path.exists(FLAGS.save):
             os.makedirs(FLAGS.save)
-            logging.info("Created a directory %s to save all the snapshots" % FLAGS.save)
+            logging.info("Created a directory %s to save all the snapshots", FLAGS.save)
 
 
         ngpus = 1 # TODO: how to handle this correctly with tf? 
@@ -274,8 +274,9 @@ def main(_):
             x = tf.placeholder(tf.float32, shape=(None, input_tensor_shape[0], input_tensor_shape[1], input_tensor_shape[2]))
 
         # Set up output (truth) tensor
-        y = tf.placeholder(tf.float32, shape=(None, nclasses)) # One-Hot Approach
-        #y = tf.placeholder(tf.float32, shape=(None))
+        #y = tf.placeholder(tf.float32, shape=(None, nclasses)) # One-Hot Approach
+        y = tf.placeholder(tf.int64, shape=(None))
+        #y = tf.cast(y, tf.int64) # Cast to this for classification (or previously allocate as such)
 
         # Import the network file
         path_network = os.path.join(os.path.dirname(os.path.realpath(__file__)), FLAGS.networkDirectory, FLAGS.network)
@@ -327,7 +328,7 @@ def main(_):
             batch_size_train = FLAGS.batchSize
             batch_size_val = FLAGS.batchSize
 
-        logging.info("Train batch size is %s and validation batch size is %s" % (batch_size_train, batch_size_val))
+        logging.info("Train batch size is %s and validation batch size is %s", (batch_size_train, batch_size_val))
 
 
         # epoch value will be calculated for every batch size. To maintain unique epoch value between batches, it needs to be rounded to the required number of significant digits.
@@ -337,9 +338,9 @@ def main(_):
             tmp_batchsize = tmp_batchsize * 10
             epoch_round = epoch_round + 1
 
-        logging.info("While logging, epoch value will be rounded to %s significant digits" % epoch_round)
+        logging.info("While logging, epoch value will be rounded to %s significant digits", epoch_round)
 
-        logging.info("Model weights will be saved as %s_<EPOCH>_Model.ckpt" % snapshot_prefix)
+        logging.info("Model weights will be saved as %s_<EPOCH>_Model.ckpt", snapshot_prefix)
 
         ## TensorBoard
         with tf.name_scope('tims_tower') as scope:
@@ -364,31 +365,7 @@ def main(_):
                 train_data_loader.setSeed(int(FLAGS.seed))
                 val_data_loader.setSeed(int(FLAGS.seed))
 
-            # @TODO: Create a LRPolicy Class
-            logging.info('Optimizer:' + FLAGS.optimization)
-            if FLAGS.optimization == 'adam':
-                optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learningRate)#.minimize(network['cost']) #FIXME: 
-            elif FLAGS.optimization == 'sgd':
-                print('using sgd')
-                lr = tf.train.exponential_decay(FLAGS.learningRate,
-                                        global_step,
-                                        10000,  #decay_steps
-                                        FLAGS.learningRateDecay,
-                                        staircase=True)
-                #lr = tf.placeholder(tf.float32, shape=[]) # You can add lr to the feed_dict this way
-                #lr = tf.Variable(FLAGS.learningRate)
-                # Create an optimizer that performs gradient descent.
-                optimizer = tf.train.GradientDescentOptimizer(lr)
-            elif FLAGS.optimization == 'rmsprop':
-                #@TODO
-                # lr =
-                optimizer = tf.train.RMSPropOptimizer(lr, RMSPROP_DECAY,
-                                        momentum=RMSPROP_MOMENTUM,
-                                        epsilon=RMSPROP_EPSILON)
-                exit(-1)
-            else:
-                logging.error("Invalid optimization flag %s" % FLAGS.optimization)
-                exit(-1)
+
 
 
     #        # Calculate the gradients for each model tower.
@@ -470,7 +447,7 @@ def main(_):
     #
             # Accuracy Op
             # @TODO: check if the network here is right
-            correct_pred = tf.equal(tf.argmax(network['model'], 1), tf.argmax(y, 1)) # Equal equates to boolean. Argmax gets the index of the max.
+            correct_pred = tf.equal(tf.argmax(network['model'], 1), y) # Equal equates to boolean. Argmax gets the index of the max.
             accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
             summaries.append(tf.scalar_summary('accuracy', accuracy))
 
@@ -492,6 +469,31 @@ def main(_):
 
             # Compute gradients.
             with tf.control_dependencies([loss_averages_op]):
+                # @TODO: Create a LRPolicy Class
+                logging.info('Optimizer:' + FLAGS.optimization)
+                if FLAGS.optimization == 'adam':
+                    optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learningRate)#.minimize(network['cost']) #FIXME: 
+                elif FLAGS.optimization == 'sgd':
+                    print('using sgd')
+                    lr = tf.train.exponential_decay(FLAGS.learningRate,
+                                            global_step,
+                                            10000,  #decay_steps
+                                            FLAGS.learningRateDecay,
+                                            staircase=True)
+                    #lr = tf.placeholder(tf.float32, shape=[]) # You can add lr to the feed_dict this way
+                    #lr = tf.Variable(FLAGS.learningRate)
+                    # Create an optimizer that performs gradient descent.
+                    optimizer = tf.train.GradientDescentOptimizer(lr)
+                elif FLAGS.optimization == 'rmsprop':
+                    #@TODO
+                    # lr =
+                    optimizer = tf.train.RMSPropOptimizer(lr, RMSPROP_DECAY,
+                                            momentum=RMSPROP_MOMENTUM,
+                                            epsilon=RMSPROP_EPSILON)
+                    exit(-1)
+                else:
+                    logging.error("Invalid optimization flag %s", FLAGS.optimization)
+                    exit(-1)
                 grads = optimizer.compute_gradients(loss)
 
 
@@ -532,12 +534,12 @@ def main(_):
 
             # # If weights option is set, preload weights from existing models appropriately
             # if FLAGS.weights:
-            #     logging.info("Loading weights from pretrained model - %s " % FLAGS.weights )
+            #     logging.info("Loading weights from pretrained model - %s ", FLAGS.weights )
             #     ckpt = tf.train.get_checkpoint_state(FLAGS.weights)
             #     if ckpt and ckpt.model_checkpoint_path:
             #         saver.restore(sess, ckpt.model_checkpoint_path)
             #     else:
-            #         logging.error("Weight file for pretrained model not found: %s" % FLAGS.weights  )
+            #         logging.error("Weight file for pretrained model not found: %s", FLAGS.weights  )
             #         exit(-1)
 
             # Start queue runners

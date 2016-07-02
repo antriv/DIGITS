@@ -43,8 +43,8 @@ class DataLoader:
         im_pil = PIL.Image.open(s)
         im_np = np.asarray(im_pil)
 
-        return im_np, label_onehot # One-Hot Approach
-        #return im_np, label
+        #return im_np, label_onehot # One-Hot Approach
+        return im_np, label
 
     def getFirstImageShape(self):
         # Sample first image to get dimensions
@@ -64,8 +64,8 @@ class DataLoader:
             images = np.empty([batch_size, self.input_tensor_shape[1], self.input_tensor_shape[0]], dtype=float)
         else:
             images = np.empty([batch_size, self.input_tensor_shape[1], self.input_tensor_shape[0], self.input_tensor_shape[2]], dtype=float)
-        labels = np.empty([batch_size, self.nclasses], dtype=int) # One-Hot Approach
-        #labels = np.empty([batch_size, 1], dtype=int)
+        #labels = np.empty([batch_size, self.nclasses], dtype=int) # One-Hot Approach
+        labels = np.empty([batch_size], dtype=int)
 
         for i in xrange(0, batch_size):
             # Get next single sample
@@ -74,7 +74,6 @@ class DataLoader:
             labels[i] = label
 
         # Keep data in DIGITS [0 255] default range
-
         return (images-127.5)/127.5, labels 
 
     def __init__(self, location, nclasses, shuffle):

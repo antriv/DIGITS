@@ -5,7 +5,7 @@ def build_model(params):
     _x = tf.reshape(params['x'], shape=[-1, params['input_shape'][0], params['input_shape'][1], params['input_shape'][2]])
 
     is_training = tf.placeholder(tf.bool)
-    with slim.arg_scope([slim.ops.conv2d, slim.ops.fc], stddev=1.0, is_training=is_training):
+    with slim.arg_scope([slim.ops.conv2d, slim.ops.fc], stddev=0.1, is_training=is_training):
         model = slim.ops.conv2d(_x, 20, [5, 5], padding='VALID', scope='conv1')
         model = slim.ops.max_pool(model, [2, 2], padding='VALID', scope='pool1')
         model = slim.ops.conv2d(model, 50, [5, 5], padding='VALID', scope='conv2')
@@ -19,7 +19,7 @@ def build_model(params):
     return {
         'model' : model, # The predictor model architecture
         'cost' : tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(
                 model, params['y'],
                 name='cross_entropy_per_example'),
             name='cross_entropy'),
