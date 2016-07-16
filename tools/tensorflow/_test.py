@@ -4,14 +4,18 @@
 
 import os
 
+#dataset_dir = "/Users/tzaman/Dropbox/code/DIGITS/digits/jobs/20160715-230349-5f23" #CIFAR100
+dataset_dir = "/Users/tzaman/Dropbox/code/DIGITS/digits/jobs/20160715-230434-21a4" #CIFAR10
+#dataset_dir = "/Users/tzaman/Dropbox/code/DIGITS/digits/jobs/20160615-215643-75fd" #MNIST
+
 # TIM'S OVERRIDES:
 args = (
-	" --labels=/Users/tzaman/Desktop/20160203-153604-2bf4/labels.txt"
+	" --labels=" + dataset_dir + "/labels.txt"
 	" --networkDirectory=../../digits/standard-networks/tensorflow"
 	#" --network=lenet.py"
 	" --network=lenet_slim.py"
-	" --train=/Users/tzaman/Desktop/20160203-153604-2bf4/train_db"
-	" --validation=/Users/tzaman/Desktop/20160203-153604-2bf4/val_db"
+	" --train=" + dataset_dir + "/train_db"
+	" --validation=" + dataset_dir + "/val_db"
 	" --summaries_dir=/tmp/tb/"
 	" --save=/Users/tzaman/Desktop/result"
 	" --seed=1"

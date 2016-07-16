@@ -96,78 +96,8 @@ def loss(logits, labels):
     # decay terms (L2 loss).
     return tf.add_n(tf.get_collection('losses'), name='total_loss')
 
-
-
-
-def tower_loss(scope):
-    # Assemble all of the losses for the current tower only.
-    losses = tf.get_collection('losses', scope)
-
-    # Calculate the total loss for the current tower.
-    total_loss = tf.add_n(losses, name='total_loss')
-
-    # Compute the moving average of all individual losses and the total loss.
-    loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
-    loss_averages_op = loss_averages.apply(losses + [total_loss])
-
-    # Attach a scalar summary to all individual losses and the total loss; do the
-    # same for the averaged version of the losses.
-    for l in losses + [total_loss]:
-        # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
-        # session. This helps the clarity of presentation on tensorboard.
-        loss_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', l.op.name)
-        # Name each loss as '(raw)' and name the moving average version of the loss
-        # as the original loss name.
-        tf.scalar_summary(loss_name +' (raw)', l)
-        tf.scalar_summary(loss_name, loss_averages.average(l))
-
-    with tf.control_dependencies([loss_averages_op]):
-        total_loss = tf.identity(total_loss)
-    return total_loss
-
-
-
-
-def average_gradients(tower_grads):
-    """Calculate the average gradient for each shared variable across all towers.
-    Note that this function provides a synchronization point across all towers.
-    Args:
-    tower_grads: List of lists of (gradient, variable) tuples. The outer list
-      is over individual gradients. The inner list is over the gradient
-      calculation for each tower.
-    Returns:
-     List of pairs of (gradient, variable) where the gradient has been averaged
-     across all towers.
-    """
-
-    average_grads = []
-    for grad_and_vars in zip(*tower_grads):
-        # Note that each grad_and_vars looks like the following:
-        #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-
-        grads = []
-        for g, _ in grad_and_vars:
-            # Add 0 dimension to the gradients to represent the tower.
-            expanded_g = tf.expand_dims(g, 0)
-
-            # Append on a 'tower' dimension which we will average over below.
-            grads.append(expanded_g)
-
-        # Average over the 'tower' dimension.
-        grad = tf.concat(0, grads)
-        grad = tf.reduce_mean(grad, 0)
-
-        # Keep in mind that the Variables are redundant because they are shared
-        # across towers. So .. we will just return the first tower's pointer to
-        # the Variable.
-        v = grad_and_vars[0][1]
-        grad_and_var = (grad, v)
-        average_grads.append(grad_and_var)
-    return average_grads
-
-
 def _add_loss_summaries(total_loss):
-    """Add summaries for losses in CIFAR-10 model.
+    """Add summaries for losses in the model.
     Generates moving average for all losses and associated summaries for
     visualizing the performance of the network.
     Args:
@@ -210,7 +140,7 @@ def Validation(sess, x, y, val_data_loader, writer_val, batch_size_val, loss, ac
     total_avg_loss = float(loss_cum_val)/num_batches
     total_acc = acc_cum_val/val_data_loader.total
 
-    logging.info("Validation (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(total_avg_loss) + ", accuracy = " + "{:.5f}".format(total_acc) )
+    logging.info("Validation (epoch " + str(current_epoch) + "): loss = " + "{:.6f}".format(total_avg_loss) + ", accuracy = " + "{:.5f}".format(total_acc))
 
 
 def main(_):
@@ -230,8 +160,6 @@ def main(_):
             logging.error("Train DB should be specified")
             exit(-1)
 
-
-
         classes = 0
         nclasses = 0
         if FLAGS.labels:
@@ -246,7 +174,7 @@ def main(_):
         train_data_loader = tf_data.DataLoader(FLAGS.train, nclasses, FLAGS.shuffle)
 
         _, input_tensor_shape = train_data_loader.getInfo()
-        logging.info("Found %s images in train db %s ", (train_data_loader.total, FLAGS.train))
+        logging.info("Found %s images in train db %s ", train_data_loader.total, FLAGS.train)
 
         if FLAGS.validation:
             val_data_loader = tf_data.DataLoader(FLAGS.validation, nclasses, FLAGS.shuffle)
@@ -350,7 +278,7 @@ def main(_):
             batch_size_train = FLAGS.batchSize
             batch_size_val = FLAGS.batchSize
 
-        logging.info("Train batch size is %s and validation batch size is %s", (batch_size_train, batch_size_val))
+        logging.info("Train batch size is %s and validation batch size is %s", batch_size_train, batch_size_val)
 
 
         # epoch value will be calculated for every batch size. To maintain unique epoch value between batches, it needs to be rounded to the required number of significant digits.
@@ -391,12 +319,6 @@ def main(_):
         # The total loss is defined as the cross entropy loss plus all of the weight
         # decay terms (L2 loss).
         loss = tf.add_n(tf.get_collection('losses'), name='total_loss')
-
-        #loss = cifar10.loss(logits, labels)
-
-        # Build a Graph that trains the model with one batch of examples and
-        # updates the model parameters.
-        #train_op = cifar10.train(loss, global_step)
 
         # Generate moving averages of all losses and associated summaries.
         loss_averages_op = _add_loss_summaries(loss)

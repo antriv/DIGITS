@@ -7,7 +7,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
-sys.path.append("/Users/tzaman/caffe/python/caffe/proto/")
+sys.path.append("/Users/tzaman/caffe/python/caffe/proto/") #@TODO: REMOVEME
 import caffe_pb2
 import lmdb
 import tensorflow as tf
