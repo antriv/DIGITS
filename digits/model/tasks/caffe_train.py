@@ -33,6 +33,7 @@ PICKLE_VERSION = 3
 
 # Constants
 CAFFE_SOLVER_FILE = 'solver.prototxt'
+CAFFE_ORIGINAL_FILE = 'original.prototxt'
 CAFFE_TRAIN_VAL_FILE = 'train_val.prototxt'
 CAFFE_SNAPSHOT_PREFIX = 'snapshot'
 CAFFE_DEPLOY_FILE = 'deploy.prototxt'
@@ -83,10 +84,15 @@ class CaffeTrainTask(TrainTask):
         self.solver = None
 
         self.solver_file = CAFFE_SOLVER_FILE
+        self.original_file = CAFFE_ORIGINAL_FILE
         self.train_val_file = CAFFE_TRAIN_VAL_FILE
         self.snapshot_prefix = CAFFE_SNAPSHOT_PREFIX
         self.deploy_file = CAFFE_DEPLOY_FILE
         self.log_file = self.CAFFE_LOG
+
+        self.digits_version = digits.__version__
+        self.caffe_version  = config_value('caffe_root')['ver_str']
+        self.caffe_flavor   = config_value('caffe_root')['flavor']
 
     def __getstate__(self):
         state = super(CaffeTrainTask, self).__getstate__()
@@ -228,6 +234,10 @@ class CaffeTrainTask(TrainTask):
         """
         Save solver, train_val and deploy files to disk
         """
+        # Save the origin network to file:
+        with open(self.path(self.original_file), 'w') as outfile:
+            text_format.PrintMessage(self.network, outfile)
+
         network = cleanedUpClassificationNetwork(self.network, len(self.get_labels()))
         data_layers, train_val_layers, deploy_layers = filterLayersByState(network)
 
@@ -523,6 +533,10 @@ class CaffeTrainTask(TrainTask):
 
         assert train_feature_db_path is not None, 'Training images are required'
 
+        # Save the origin network to file:
+        with open(self.path(self.original_file), 'w') as outfile:
+            text_format.PrintMessage(self.network, outfile)
+
         ### Split up train_val and deploy layers
 
         network = cleanedUpGenericNetwork(self.network)
@@ -596,8 +610,9 @@ class CaffeTrainTask(TrainTask):
         # network sanity checks
         self.logger.debug("Network sanity check - train")
         CaffeTrainTask.net_sanity_check(train_val_network, caffe_pb2.TRAIN)
-        self.logger.debug("Network sanity check - val")
-        CaffeTrainTask.net_sanity_check(train_val_network, caffe_pb2.TEST)
+        if val_image_data_layer is not None:
+            self.logger.debug("Network sanity check - val")
+            CaffeTrainTask.net_sanity_check(train_val_network, caffe_pb2.TEST)
 
         ### Write deploy file
 
@@ -835,7 +850,7 @@ class CaffeTrainTask(TrainTask):
                 else:
                     raise ValueError('Unknown flavor.  Support NVIDIA and BVLC flavors only.')
         if self.pretrained_model:
-            args.append('--weights=%s' % ','.join(map(lambda x: self.path(x), self.pretrained_model.split(':'))))
+            args.append('--weights=%s' % ','.join(map(lambda x: self.path(x), self.pretrained_model.split(os.path.pathsep))))
         return args
 
 
@@ -849,7 +864,7 @@ class CaffeTrainTask(TrainTask):
         gpu_id -- the GPU device id to use
         """
         # TODO: Remove this once caffe.exe works fine with Python Layer
-        solver_type_mapping = {            
+        solver_type_mapping = {
             'ADADELTA': 'AdaDeltaSolver',
             'ADAGRAD' : 'AdaGradSolver',
             'ADAM'    : 'AdamSolver',
@@ -864,11 +879,11 @@ class CaffeTrainTask(TrainTask):
             gpu_script = "caffe.set_device({id});caffe.set_mode_gpu();".format(id=gpu_id)
         else:
             gpu_script = "caffe.set_mode_cpu();"
+        loading_script = ""
         if self.pretrained_model:
-            weight_files = ','.join(map(lambda x: self.path(x), self.pretrained_model.split(':')))
-            loading_script = "solv.net.copy_from('{weight}');".format(weight=weight_files)
-        else:
-            loading_script = ""
+            weight_files = map(lambda x: self.path(x), self.pretrained_model.split(os.path.pathsep))
+            for weight_file in weight_files:
+                loading_script = loading_script + "solv.net.copy_from('{weight}');".format(weight=weight_file)
         command_script =\
             "import caffe;" \
             "{gpu_script}" \
@@ -1028,6 +1043,41 @@ class CaffeTrainTask(TrainTask):
                 print output
 
     ### TrainTask overrides
+
+    @override
+    def get_task_stats(self,epoch=-1):
+        """
+        return a dictionary of task statistics
+        """
+
+        loc, mean_file = os.path.split(self.dataset.get_mean_file())
+
+        stats = {
+            "image dimensions": self.dataset.get_feature_dims(),
+            "mean file": mean_file,
+            "snapshot file": self.get_snapshot_filename(epoch),
+            "solver file": self.solver_file,
+            "train_val file": self.train_val_file,
+            "deploy file": self.deploy_file,
+            "framework": "caffe"
+        }
+
+        # These attributes only available in more recent jobs:
+        if hasattr(self,"original_file"):
+            stats.update({
+                "caffe flavor": self.caffe_flavor,
+                "caffe version": self.caffe_version,
+                "network file": self.original_file,
+                "digits version": self.digits_version
+            })
+
+        if hasattr(self.dataset,"resize_mode"):
+            stats.update({"image resize mode": self.dataset.resize_mode})
+
+        if hasattr(self.dataset,"labels_file"):
+            stats.update({"labels file": self.dataset.labels_file})
+
+        return stats
 
     @override
     def detect_snapshots(self):
@@ -1315,18 +1365,7 @@ class CaffeTrainTask(TrainTask):
         if not self.has_model():
             return False
 
-        file_to_load = None
-
-        if not epoch:
-            epoch = self.snapshots[-1][1]
-            file_to_load = self.snapshots[-1][0]
-        else:
-            for snapshot_file, snapshot_epoch in self.snapshots:
-                if snapshot_epoch == epoch:
-                    file_to_load = snapshot_file
-                    break
-        if file_to_load is None:
-            raise Exception('snapshot not found for epoch "%s"' % epoch)
+        file_to_load = self.get_snapshot(epoch)
 
         # check if already loaded
         if self.loaded_snapshot_file and self.loaded_snapshot_file == file_to_load \
@@ -1420,11 +1459,14 @@ class CaffeTrainTask(TrainTask):
         """
         return paths to model files
         """
-        return {
+        model_files = {
                 "Solver": self.solver_file,
                 "Network (train/val)": self.train_val_file,
                 "Network (deploy)": self.deploy_file
             }
+        if hasattr(self,"original_file"):
+            model_files.update({"Network (original)": self.original_file})
+        return model_files
 
     @override
     def get_network_desc(self):

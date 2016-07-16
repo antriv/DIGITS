@@ -101,9 +101,9 @@ return function(p)
 end
 """
     @classmethod
-    def setUpClass(cls):
-        super(BaseViewsTest, cls).setUpClass()
-        if cls.FRAMEWORK=='torch' and not config_value('torch_root'):
+    def setUpClass(cls, **kwargs):
+        super(BaseViewsTest, cls).setUpClass(**kwargs)
+        if cls.FRAMEWORK == 'torch' and not config_value('torch_root'):
             raise unittest.SkipTest('Torch not found')
 
     @classmethod
@@ -148,8 +148,8 @@ class BaseViewsTestWithAnyDataset(BaseViewsTest):
     LEARNING_RATE = None
 
     @classmethod
-    def setUpClass(cls):
-        super(BaseViewsTestWithAnyDataset, cls).setUpClass()
+    def setUpClass(cls, **kwargs):
+        super(BaseViewsTestWithAnyDataset, cls).setUpClass(**kwargs)
         cls.created_models = []
 
     @classmethod
@@ -237,8 +237,8 @@ class BaseViewsTestWithModelWithAnyDataset(BaseViewsTestWithAnyDataset):
     Provides a model
     """
     @classmethod
-    def setUpClass(cls):
-        super(BaseViewsTestWithModelWithAnyDataset, cls).setUpClass()
+    def setUpClass(cls, **kwargs):
+        super(BaseViewsTestWithModelWithAnyDataset, cls).setUpClass(**kwargs)
         cls.model_id = cls.create_model(json=True)
         assert cls.model_wait_completion(cls.model_id) == 'Done', 'create failed'
 
@@ -483,6 +483,11 @@ class BaseTestCreation(BaseViewsTestWithDataset):
         content2.pop('id')
         content1.pop('directory')
         content2.pop('directory')
+        content1.pop('creation time')
+        content2.pop('creation time')
+        content1.pop('job id')
+        content2.pop('job id')
+
         assert (content1 == content2), 'job content does not match'
 
         job1 = digits.webapp.scheduler.get_job(job1_id)
@@ -497,6 +502,15 @@ class BaseTestCreatedWithAnyDataset(BaseViewsTestWithModelWithAnyDataset):
     def test_save(self):
         job = digits.webapp.scheduler.get_job(self.model_id)
         assert job.save(), 'Job failed to save'
+
+    def test_get_snapshot(self):
+        job  = digits.webapp.scheduler.get_job(self.model_id)
+        task = job.train_task()
+        f = task.get_snapshot(-1)
+
+        assert f, "Failed to load snapshot"
+        filename = task.get_snapshot_filename(-1)
+        assert filename, "Failed to get filename"
 
     def test_download(self):
         for extension in ['tar', 'zip', 'tar.gz', 'tar.bz2']:
@@ -592,6 +606,8 @@ class BaseTestCreatedWithAnyDataset(BaseViewsTestWithModelWithAnyDataset):
         assert headers is not None, 'unrecognized page format'
 
     def test_infer_db(self):
+        if self.val_db_path is None:
+            raise unittest.SkipTest('Class has no validation db')
         rv = self.app.post(
                 '/models/images/generic/infer_db?job_id=%s' % self.model_id,
                 data = {'db_path': self.val_db_path}
@@ -639,11 +655,13 @@ class BaseTestCreatedWithAnyDataset(BaseViewsTestWithModelWithAnyDataset):
         assert 'outputs' in data, 'invalid response'
 
     def test_infer_db_json(self):
+        if self.val_db_path is None:
+            raise unittest.SkipTest('Class has no validation db')
         rv = self.app.post(
                 '/models/images/generic/infer_db.json?job_id=%s' % self.model_id,
                 data = {'db_path': self.val_db_path}
                 )
-        assert rv.status_code == 200, 'POST failed with %s\n\n%s' % (rv.status_code, body)
+        assert rv.status_code == 200, 'POST failed with %s\n\n%s' % (rv.status_code, rv.data)
         data = json.loads(rv.data)
         assert 'outputs' in data, 'invalid response'
 
@@ -663,8 +681,8 @@ class BaseTestCreatedWithGradientDataExtension(BaseTestCreatedWithAnyDataset,
     EXTENSION_ID = "image-gradients"
 
     @classmethod
-    def setUpClass(cls):
-        super(BaseTestCreatedWithGradientDataExtension, cls).setUpClass()
+    def setUpClass(cls, **kwargs):
+        super(BaseTestCreatedWithGradientDataExtension, cls).setUpClass(**kwargs)
         if not hasattr(cls, 'imageset_folder'):
             # Create test image
             cls.imageset_folder = tempfile.mkdtemp()
@@ -679,9 +697,6 @@ class BaseTestCreatedWithGradientDataExtension(BaseTestCreatedWithAnyDataset,
             pil_img = PIL.Image.fromarray(test_image)
             cls.test_image = os.path.join(cls.imageset_folder, 'test.png')
             pil_img.save(cls.test_image)
-            # Save val DB path
-            json = cls.get_dataset_json()
-            cls.val_db_path = os.path.join(json["directory"], "val_db", "features")
         cls.model_id = cls.create_model(json=True)
         assert cls.model_wait_completion(cls.model_id) == 'Done', 'create failed'
 
@@ -845,6 +860,12 @@ class TestCaffeCreated(BaseTestCreated):
 class TestCaffeCreatedWithGradientDataExtension(BaseTestCreatedWithGradientDataExtension):
     FRAMEWORK = 'caffe'
 
+class TestCaffeCreatedWithGradientDataExtensionNoValSet(BaseTestCreatedWithGradientDataExtension):
+    FRAMEWORK = 'caffe'
+    @classmethod
+    def setUpClass(cls):
+        super(TestCaffeCreatedWithGradientDataExtensionNoValSet, cls).setUpClass(val_image_count=0)
+
 class TestCaffeDatasetModelInteractions(BaseTestDatasetModelInteractions):
     FRAMEWORK = 'caffe'
 
@@ -865,6 +886,12 @@ class TestTorchCreated(BaseTestCreated):
 
 class TestTorchCreatedWithGradientDataExtension(BaseTestCreatedWithGradientDataExtension):
     FRAMEWORK = 'torch'
+
+class TestTorchCreatedWithGradientDataExtensionNoValSet(BaseTestCreatedWithGradientDataExtension):
+    FRAMEWORK = 'torch'
+    @classmethod
+    def setUpClass(cls):
+        super(TestTorchCreatedWithGradientDataExtensionNoValSet, cls).setUpClass(val_image_count=0)
 
 class TestTorchCreatedCropInNetwork(BaseTestCreatedCropInNetwork):
     FRAMEWORK = 'torch'
@@ -1037,4 +1064,3 @@ layer {
   exclude { stage: "deploy" }
 }
 """
-
